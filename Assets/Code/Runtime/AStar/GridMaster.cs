@@ -371,6 +371,7 @@ namespace AStar
         public NativeArray<NodeTransform> NodesTransforms { get { return nodesTransforms; } }
         public NativeArray<NodeType> NodesTypes { get { return nodesTypes; } }
         public NativeArray<NodeNeighbor> NodesNeighbors { get { return nodesNeighbors; } }
+        public Bounds Bounds { get { return scanCollider.bounds; } }
 
         #endregion
 
