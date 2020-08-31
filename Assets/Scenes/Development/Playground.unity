@@ -8101,8 +8101,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   agentPrefab: {fileID: 2697000545291045787, guid: 844d248165cece34783c4a7a8ec61a9b,
     type: 3}
-  agentsSpeed: 0.1
-  quantity: 200
+  agentsSpeed: 4
+  quantity: 500
   endPositions:
   - {fileID: 1760888066}
   - {fileID: 1642104499}

@@ -145,7 +145,6 @@ public class AgentManager : MonoBehaviour
         public void Execute(int index)
         {
             NativeArray<NodePathFindInfo> nodesInfo = new NativeArray<NodePathFindInfo>(numNodes, Allocator.Temp);
-            NativeList<int> pathResultNodesIndices = new NativeList<int>(128, Allocator.Temp);
             NativeList<int> openSet = new NativeList<int>(numNodes / 4, Allocator.Temp);
 
             NativeArray<byte> closedSet = new NativeArray<byte>(numNodes, Allocator.Temp);
@@ -156,7 +155,7 @@ public class AgentManager : MonoBehaviour
             // when an index is invalid, it's set to -1
             if (startNodeIndex < 0 || endNodeIndex < 0)
             {
-                pathResultNodesIndices.Add(-1);
+                nextNodesIndices[index] = -1;
                 return;
             }
 
@@ -173,14 +172,12 @@ public class AgentManager : MonoBehaviour
                 // we've reached the goal
                 if (currNodeIndex == endNodeIndex)
                 {
-                    pathResultNodesIndices.Add(currNodeIndex);
-                    ReconstructPath(index, startNodeIndex, pathResultNodesIndices, nodesInfo);
+                    ReconstructPath(index, startNodeIndex, nodesInfo);
 
                     nodesInfo.Dispose();
                     openSetContains.Dispose();
                     openSet.Dispose();
                     closedSet.Dispose();
-                    pathResultNodesIndices.Dispose();
                     return;
                 }
 
@@ -233,14 +230,12 @@ public class AgentManager : MonoBehaviour
                 }
             }
 
-            pathResultNodesIndices.Add(-1);
-            ReconstructPath(index, startNodeIndex, pathResultNodesIndices, nodesInfo);
+            nextNodesIndices[index] = -1;
 
             nodesInfo.Dispose();
             openSetContains.Dispose();
             openSet.Dispose();
             closedSet.Dispose();
-            pathResultNodesIndices.Dispose();
         }
 
         private int PopLowestFCostNodeIndexFromOpenSet(NativeList<int> openSet, NativeArray<NodePathFindInfo> nodesInfo)
@@ -285,26 +280,19 @@ public class AgentManager : MonoBehaviour
             return rowOffset + colOffset;
         }
 
-        private void ReconstructPath(int index, int startNodeIndex, NativeList<int> pathResultNodesIndices, NativeArray<NodePathFindInfo> nodesInfo)
+        private void ReconstructPath(int index, int startNodeIndex, NativeArray<NodePathFindInfo> nodesInfo)
         {
-            if (pathResultNodesIndices.Length == 0 || pathResultNodesIndices[0] == -1)
-            {
-                nextNodesIndices[index] = -1;
-                return;
-            }
-
-            int currNode = pathResultNodesIndices[0];
+            int currNode = endNodeIndices[index];
+            int nextNode = -1;
 
             while (currNode != startNodeIndex)
             {
+                nextNode = currNode;
                 int parentNodeIndex = nodesInfo[currNode].parentNodeIndex;
                 currNode = parentNodeIndex;
-
-                pathResultNodesIndices.Add(parentNodeIndex);
             }
 
-            // the last node on the path is the following one (its reversed)
-            nextNodesIndices[index] = pathResultNodesIndices.ElementAt(pathResultNodesIndices.Length - 1);
+            nextNodesIndices[index] = nextNode;
         }
     }
 
