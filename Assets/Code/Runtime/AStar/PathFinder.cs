@@ -31,11 +31,12 @@ namespace AStar
             [ReadOnly] private readonly NativeArray<NodeNeighbor> nodesNeighbors;
             [ReadOnly] private readonly NativeArray<NodeType> nodesTypes;
 
-            private NativeArray<NodePathFindInfo> nodesInfo;
+            [DeallocateOnJobCompletion] private NativeArray<NodePathFindInfo> nodesInfo;
 
             public NativeList<int> openSet;
 
-            public NativeList<int> pathResultNodesIndices;
+            // we need a one-element array to be able to read the result after jobsdone
+            [WriteOnly] public NativeArray<int> nextNodeOnPath;
 
             public FindPathJob(int numNodes, int gridWidth, int numNeighbors, int startNodeIndex, int endNodeIndex, NativeArray<NodeNeighbor> nodesNeighbors, NativeArray<NodeType> nodesTypes)
             {
@@ -52,7 +53,7 @@ namespace AStar
                 nodesInfo = new NativeArray<NodePathFindInfo>(numNodes, Allocator.TempJob);
                 openSet = new NativeList<int>(numNodes / 4, Allocator.TempJob);
 
-                pathResultNodesIndices = new NativeList<int>(Allocator.TempJob);
+                nextNodeOnPath = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
             }
 
             /// <inheritdoc/>
@@ -63,7 +64,7 @@ namespace AStar
                 // when an index is invalid, it's set to -1
                 if (startNodeIndex < 0 || endNodeIndex < 0)
                 {
-                    pathResultNodesIndices.Add(-1);
+                    nextNodeOnPath[0] = -1;
                     return;
                 }
 
@@ -80,8 +81,7 @@ namespace AStar
                     // we've reached the goal
                     if (currNodeIndex == endNodeIndex)
                     {
-                        pathResultNodesIndices.Add(currNodeIndex);
-                        ReconstructPath();
+                        CalculateNextNodeIndexToMoveTo();
                         openSetContains.Dispose();
                         closedSet.Dispose();
                         return;
@@ -136,8 +136,7 @@ namespace AStar
                     }
                 }
 
-                pathResultNodesIndices.Add(-1);
-                ReconstructPath();
+                nextNodeOnPath[0] = -1;
                 closedSet.Dispose();
                 openSetContains.Dispose();
             }
@@ -196,22 +195,21 @@ namespace AStar
             }
 
             /// <summary>
-            /// Reconstruct the path.
+            /// Calculates the next node index that we should move to.
             /// </summary>
-            private void ReconstructPath()
+            private void CalculateNextNodeIndexToMoveTo()
             {
-                if (pathResultNodesIndices.Length == 0)
-                    return;
-
-                int currNode = pathResultNodesIndices[0];
+                int currNode = endNodeIndex;
+                int nextNode = -1;
 
                 while (currNode != startNodeIndex)
                 {
+                    nextNode = currNode;
                     int parentNodeIndex = nodesInfo[currNode].parentNodeIndex;
                     currNode = parentNodeIndex;
-
-                    pathResultNodesIndices.Add(parentNodeIndex);
                 }
+
+                nextNodeOnPath[0] = nextNode;
             }
 
             /// <summary>
@@ -220,8 +218,8 @@ namespace AStar
             public void Dispose()
             {
                 openSet.Dispose();
-                nodesInfo.Dispose();
-                pathResultNodesIndices.Dispose();
+                //nodesInfo.Dispose();
+                nextNodeOnPath.Dispose();
             }
         }
 
@@ -242,8 +240,10 @@ namespace AStar
         #region Pathfinding Methods
 
         /// <summary> Schedules and completes a bunch of paths, as many as startPositions &
-        /// endPositions length. </summary> <param name="startPositions"></param> <param name="endPositions"></param>
-        public void FindNextPointOnPathsBatch(NativeArray<Vector3> startPositions, NativeArray<Vector3> endPositions)
+        /// endPositions length. Fills the nextNodesIndices array with the resulting next nodes to
+        /// move to. </summary> <param name="startPositions"></param> <param
+        /// name="endPositions"></param> <param name="nextNodesIndices"></param>
+        public void FindNextNodeIndexOnPathsBatch(NativeArray<Vector3> startPositions, NativeArray<Vector3> endPositions, NativeArray<int> nextNodesIndices)
         {
             GridMaster gm = GridMaster.Instance;
             int dimension = gm.GridWidth * gm.GridDepth;
@@ -261,13 +261,13 @@ namespace AStar
                 handles[i] = findPathJob.Schedule();
 
                 findPathJobs.Add(findPathJob);
-                //findPathJob.pathResultNodesIndices; // < im not doing anything with the result yet.
             }
 
             JobHandle.CompleteAll(handles);
 
             for (int i = findPathJobs.Count - 1; i >= 0; i--)
             {
+                nextNodesIndices[i] = findPathJobs[i].nextNodeOnPath[0];
                 findPathJobs[i].Dispose();
                 findPathJobs.RemoveAt(i);
             }

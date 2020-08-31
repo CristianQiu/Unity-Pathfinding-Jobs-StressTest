@@ -2126,7 +2126,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 432699019}
   m_LocalRotation: {x: 0.27781588, y: 0.36497167, z: -0.1150751, w: 0.8811196}
-  m_LocalPosition: {x: -10.13649, y: 10.037586, z: -10.136491}
+  m_LocalPosition: {x: -42, y: 44, z: -56}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 856941834}
@@ -8124,7 +8124,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1678672113}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.5, z: -43}
+  m_LocalPosition: {x: 0, y: 0, z: -43}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
@@ -8155,7 +8155,7 @@ MonoBehaviour:
   - {fileID: 699208557}
   agentPrefab: {fileID: 2697000545291045787, guid: 844d248165cece34783c4a7a8ec61a9b,
     type: 3}
-  agentsSpeed: 1.51
+  agentsSpeed: 4
   quantity: 200
 --- !u!1 &1679442339
 GameObject:
