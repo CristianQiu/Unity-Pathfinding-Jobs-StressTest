@@ -387,6 +387,7 @@ namespace AStar
             nodeBatcher = new Batcher(nodeMesh, nodeMaterial);
             connectionsMesh = RenderUtils.CreateMeshForProceduralModifications("connectionsMesh", UnityEngine.Rendering.IndexFormat.UInt32);
 #endif
+            CreateGrid();
         }
 
 #if DEBUG_RENDER
