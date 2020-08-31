@@ -3025,7 +3025,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 22
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &563596138
 Transform:
   m_ObjectHideFlags: 0
@@ -3848,7 +3848,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 22
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &737487989
 Transform:
   m_ObjectHideFlags: 0
@@ -4744,7 +4744,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 22
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &964567400
 Transform:
   m_ObjectHideFlags: 0
@@ -6983,7 +6983,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 22
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &1431660728
 Transform:
   m_ObjectHideFlags: 0
@@ -8156,7 +8156,7 @@ MonoBehaviour:
   agentPrefab: {fileID: 2697000545291045787, guid: 844d248165cece34783c4a7a8ec61a9b,
     type: 3}
   agentsSpeed: 1.51
-  quantity: 500
+  quantity: 200
 --- !u!1 &1679442339
 GameObject:
   m_ObjectHideFlags: 0
@@ -9218,7 +9218,7 @@ MonoBehaviour:
   nonWalkableNodeColor:
     serializedVersion: 2
     rgba: 3221225727
-  showNodesConnections: 1
+  showNodesConnections: 0
   nodeConnectionsMaterial: {fileID: 2100000, guid: 215321f630d9b024ba12def0bf168c78,
     type: 2}
 --- !u!65 &1944178382
@@ -9749,7 +9749,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 22
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &2083229686
 Transform:
   m_ObjectHideFlags: 0

@@ -66,7 +66,6 @@ public class AgentManager : MonoBehaviour
     private void Update()
     {
         NativeArray<Vector3> origEndPositions = new NativeArray<Vector3>(endPositions.Length, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-
         for (int i = 0; i < endPositions.Length; i++)
             origEndPositions[i] = endPositions[i].position;
 

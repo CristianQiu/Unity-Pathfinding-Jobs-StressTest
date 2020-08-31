@@ -5,7 +5,6 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityLibrary;
-using Logger = UnityLibrary.Logger;
 
 namespace AStar
 {
@@ -240,96 +239,7 @@ namespace AStar
 
         #endregion
 
-        #region MonoBehaviour Methods
-
-        protected override void Awake()
-        {
-            base.Awake();
-        }
-
-        #endregion
-
         #region Pathfinding Methods
-
-        /// <summary>
-        /// Finds a path from the start node index to the end node index position.
-        /// </summary>
-        /// <param name="startNodeIndex"></param>
-        /// <param name="endNodeIndex"></param>
-        /// <param name="pathNodesIndicesResult"></param>
-        public void FindNodeIndexPath(int startNodeIndex, int endNodeIndex, NativeList<int> pathNodesIndicesResult)
-        {
-            GridMaster gm = GridMaster.Instance;
-
-            if (startNodeIndex < 0 || endNodeIndex < 0 || !gm.IsGridCreated)
-            {
-                Logger.LogWarning("Trying to find a path, either from a invalid start position or invalid end position, or maybe the grid was not created yet");
-                return;
-            }
-
-            int dimension = gm.GridDepth * gm.GridWidth;
-
-            FindPathJob findPathJob = new FindPathJob(dimension, gm.GridWidth, GridMaster.NodeNeighbors, startNodeIndex, endNodeIndex, gm.NodesNeighbors, gm.NodesTypes);
-            JobHandle handle = findPathJob.Schedule();
-
-            handle.Complete();
-
-            // the path is given out from end to start, reverse it and fill the actual result list
-            NativeList<int> reversedPath = findPathJob.pathResultNodesIndices;
-            pathNodesIndicesResult.Clear();
-
-            for (int i = reversedPath.Length - 1; i >= 0; i--)
-                pathNodesIndicesResult.Add(reversedPath[i]);
-
-            findPathJob.Dispose();
-        }
-
-        /// <summary>
-        /// Finds a path from the start position to the end position.
-        /// </summary>
-        /// <param name="start"></param>
-        /// <param name="end"></param>
-        /// <param name="pathNodesIndicesResult"></param>
-        public void FindNodeIndexPath(Vector3 start, Vector3 end, NativeList<int> pathNodesIndicesResult)
-        {
-            GridMaster gm = GridMaster.Instance;
-
-            int startNodeIndex = gm.PosToNodeIndex(start);
-            int endNodeIndex = gm.PosToNodeIndex(end);
-
-            FindNodeIndexPath(startNodeIndex, endNodeIndex, pathNodesIndicesResult);
-        }
-
-        /// <summary>
-        /// Finds a path from the start position to the end position.
-        /// </summary>
-        /// <param name="start"></param>
-        /// <param name="end"></param>
-        /// <param name="pathNodesTransformsResult"></param>
-        /// <param name="positionYOffset"></param>
-        public void FindNodePositionPath(Vector3 start, Vector3 end, NativeList<Vector3> pathNodesTransformsResult, float positionYOffset = 0.0f)
-        {
-            pathNodesTransformsResult.Clear();
-            NativeList<int> nodeIndicesPath = new NativeList<int>(128, Allocator.TempJob);
-
-            FindNodeIndexPath(start, end, nodeIndicesPath);
-
-            GridMaster gm = GridMaster.Instance;
-
-            // convert indices to the actual path based on points
-            for (int i = 0; i < nodeIndicesPath.Length; i++)
-            {
-                int index = nodeIndicesPath[i];
-
-                NodeTransform nt = gm.GetNodeTransform(index);
-                Vector3 pos = nt.Pos;
-                pos += nt.Up * positionYOffset;
-
-                pathNodesTransformsResult.Add(pos);
-            }
-
-            nodeIndicesPath.Dispose();
-        }
 
         /// <summary> Schedules and completes a bunch of paths, as many as startPositions &
         /// endPositions length. </summary> <param name="startPositions"></param> <param name="endPositions"></param>
@@ -347,16 +257,11 @@ namespace AStar
                 int startNodeIndex = gm.PosToNodeIndex(startPositions[i]);
                 int endNodeIndex = gm.PosToNodeIndex(endPositions[i]);
 
-                //if (startNodeIndex == -1 || endNodeIndex == -1)
-                //{
-                //    Debug.Log("invalid i " + i);
-                //}
-
                 FindPathJob findPathJob = new FindPathJob(dimension, gm.GridWidth, GridMaster.NodeNeighbors, startNodeIndex, endNodeIndex, gm.NodesNeighbors, gm.NodesTypes);
                 handles[i] = findPathJob.Schedule();
 
                 findPathJobs.Add(findPathJob);
-                //findPathJob.pathResultNodesIndices;
+                //findPathJob.pathResultNodesIndices; // < im not doing anything with the result yet.
             }
 
             JobHandle.CompleteAll(handles);
