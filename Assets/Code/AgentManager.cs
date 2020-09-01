@@ -4,7 +4,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.Jobs;
+using UnityEngine.SceneManagement;
 using Random = Unity.Mathematics.Random;
 
 /// <summary>
@@ -306,6 +308,7 @@ public class AgentManager : MonoBehaviour
     private void Start()
     {
         Spawn();
+        SpawnGraphy();
 
         endPositionsToChooseFrom = new NativeArray<Vector3>(endPositions.Length, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         for (int i = 0; i < endPositions.Length; i++)
@@ -352,6 +355,9 @@ public class AgentManager : MonoBehaviour
 
         findPathsJob.Dispose();
         calcStartEndJob.Dispose();
+
+        if (Keyboard.current.escapeKey.wasPressedThisFrame)
+            Application.Quit();
     }
 
     private void OnDestroy()
@@ -392,6 +398,10 @@ public class AgentManager : MonoBehaviour
         agentsTransAcc = new TransformAccessArray(agentsTransforms);
     }
 
+    #endregion
+
+    #region Cam pivot
+
     public Transform camPivot;
     public Transform camPivotEnd;
 
@@ -403,6 +413,22 @@ public class AgentManager : MonoBehaviour
         delta = Vector3.ClampMagnitude(delta, inc.magnitude);
 
         camPivot.transform.position += delta;
+    }
+
+    #endregion
+
+    #region UI
+
+    public GameObject graphyPrefab;
+
+    private void SpawnGraphy()
+    {
+        Instantiate(graphyPrefab);
+    }
+
+    public void OnRestartClicked()
+    {
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
     #endregion
