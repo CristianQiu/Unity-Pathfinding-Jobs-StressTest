@@ -12,25 +12,7 @@ using Random = Unity.Mathematics.Random;
 /// </summary>
 public class AgentManager : MonoBehaviour
 {
-    [BurstCompile]
-    private struct MoveAgentsJob : IJobParallelForTransform
-    {
-        [ReadOnly] public NativeArray<int> nodeIndicesDestinations;
-        [ReadOnly] public NativeArray<NodeTransform> nodes;
-        [ReadOnly] public float speed;
-        [ReadOnly] public float dt;
-
-        public void Execute(int index, TransformAccess transform)
-        {
-            int nodeIndex = nodeIndicesDestinations[index];
-
-            if (nodeIndex < 0)
-                return;
-
-            Vector3 offset = nodes[nodeIndex].Pos - transform.position;
-            transform.position = transform.position + (offset.normalized * (speed * dt));
-        }
-    }
+    #region Jobs
 
     [BurstCompile]
     private struct CalculateStartEndPosJob : IJobParallelForTransform
@@ -42,12 +24,7 @@ public class AgentManager : MonoBehaviour
         [ReadOnly] public int gridWidth;
 
         [ReadOnly] public Random rand;
-        [ReadOnly] public NativeArray<Vector3> origEndPositions;
-
-        // might not need these two below
-
-        [WriteOnly] public NativeArray<Vector3> startPositions;
-        [WriteOnly] public NativeArray<Vector3> endPositions;
+        [ReadOnly] public NativeArray<Vector3> endPositionsToChooseFrom;
 
         [WriteOnly] public NativeArray<int> startPositionsIndices;
         [WriteOnly] public NativeArray<int> endPositionsIndices;
@@ -55,10 +32,7 @@ public class AgentManager : MonoBehaviour
         public void Execute(int index, TransformAccess transform)
         {
             Vector3 startPos = transform.position;
-            Vector3 endPos = origEndPositions[rand.NextInt(0, origEndPositions.Length - 1)];
-
-            startPositions[index] = startPos;
-            endPositions[index] = endPos;
+            Vector3 endPos = endPositionsToChooseFrom[rand.NextInt(0, endPositionsToChooseFrom.Length - 1)];
 
             startPositionsIndices[index] = PosToNodeIndex(startPos);
             endPositionsIndices[index] = PosToNodeIndex(endPos);
@@ -97,11 +71,6 @@ public class AgentManager : MonoBehaviour
 
         public void Dispose()
         {
-            origEndPositions.Dispose();
-
-            startPositions.Dispose();
-            endPositions.Dispose();
-
             startPositionsIndices.Dispose();
             endPositionsIndices.Dispose();
         }
@@ -296,26 +265,55 @@ public class AgentManager : MonoBehaviour
         }
     }
 
+    [BurstCompile]
+    private struct MoveAgentsJob : IJobParallelForTransform
+    {
+        [ReadOnly] public NativeArray<int> nodeIndicesDestinations;
+        [ReadOnly] public NativeArray<NodeTransform> nodes;
+        [ReadOnly] public float speed;
+        [ReadOnly] public float dt;
+
+        public void Execute(int index, TransformAccess transform)
+        {
+            int nodeIndex = nodeIndicesDestinations[index];
+
+            if (nodeIndex < 0)
+                return;
+
+            Vector3 offset = nodes[nodeIndex].Pos + new Vector3(0.0f, transform.localScale.y * 0.5f, 0.0f) - transform.position;
+            transform.position = transform.position + (offset.normalized * (speed * dt));
+        }
+    }
+
+    #endregion
+
+    #region Attributes
+
     public GameObject agentPrefab;
     public float agentsSpeed = 10.0f;
     public int quantity;
 
     public Transform[] endPositions;
 
+    private NativeArray<Vector3> endPositionsToChooseFrom;
     private Transform[] agentsTransforms;
     private TransformAccessArray agentsTransAcc;
+
+    #endregion
+
+    #region Methods
 
     private void Start()
     {
         Spawn();
+
+        endPositionsToChooseFrom = new NativeArray<Vector3>(endPositions.Length, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        for (int i = 0; i < endPositions.Length; i++)
+            endPositionsToChooseFrom[i] = endPositions[i].position;
     }
 
     private void Update()
     {
-        NativeArray<Vector3> origEndPositions = new NativeArray<Vector3>(endPositions.Length, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-        for (int i = 0; i < endPositions.Length; i++)
-            origEndPositions[i] = endPositions[i].position;
-
         GridMaster gm = GridMaster.Instance;
 
         CalculateStartEndPosJob calcStartEndJob = new CalculateStartEndPosJob()
@@ -326,9 +324,7 @@ public class AgentManager : MonoBehaviour
             isGridCreated = gm.IsGridCreated,
             gridWidth = gm.GridWidth,
 
-            origEndPositions = origEndPositions,
-            startPositions = new NativeArray<Vector3>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory),
-            endPositions = new NativeArray<Vector3>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory),
+            endPositionsToChooseFrom = endPositionsToChooseFrom,
 
             startPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory),
             endPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory),
@@ -349,6 +345,9 @@ public class AgentManager : MonoBehaviour
         };
 
         JobHandle moveHandle = moveJob.Schedule(agentsTransAcc, findPathsHandle);
+
+        UpdateCamPivot();
+
         moveHandle.Complete();
 
         findPathsJob.Dispose();
@@ -357,6 +356,7 @@ public class AgentManager : MonoBehaviour
 
     private void OnDestroy()
     {
+        endPositionsToChooseFrom.Dispose();
         agentsTransAcc.Dispose();
     }
 
@@ -370,15 +370,40 @@ public class AgentManager : MonoBehaviour
             // system to split calculations across threads
             agentsTransforms[i] = Instantiate(agentPrefab, null).transform;
 
-            // spawn along x= -45 to +45
             float t = (float)i / (float)quantity;
-            t *= 90.0f;
-            t -= 45.0f;
 
-            // scatter the spawn along the x axis to avoid excessive overlapping
-            agentsTransforms[i].position = transform.position + new Vector3(t, 0.0f, 0.0f);
+            float x = t * 90.0f;
+            x -= 45.0f;
+
+            float z = UnityEngine.Random.Range(-4.0f, 4.0f);
+
+            // scatter the spawn along the x/z axis to avoid excessive overlapping
+            agentsTransforms[i].position = transform.position + new Vector3(x, 0.0f, z);
+
+            // uncomment for color variation but sacrify instancing
+            //agentsTransforms[i].GetComponentInChildren<MeshRenderer>().material.color = new Color(t, t * (z * 0.25f), z * 0.25f, 1.0f);
+
+            float sy = UnityEngine.Random.Range(0.4f, 1.0f);
+            float sxz = UnityEngine.Random.Range(0.4f, 0.8f);
+
+            agentsTransforms[i].localScale = new Vector3(sxz, sy, sxz);
         }
 
         agentsTransAcc = new TransformAccessArray(agentsTransforms);
     }
+
+    public Transform camPivot;
+    public Transform camPivotEnd;
+
+    private void UpdateCamPivot()
+    {
+        Vector3 inc = camPivotEnd.position - camPivot.position;
+
+        Vector3 delta = inc.normalized * (agentsSpeed * 1.2f * Time.deltaTime);
+        delta = Vector3.ClampMagnitude(delta, inc.magnitude);
+
+        camPivot.transform.position += delta;
+    }
+
+    #endregion
 }
