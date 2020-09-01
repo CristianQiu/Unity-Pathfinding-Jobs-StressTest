@@ -3646,7 +3646,7 @@ Transform:
   m_Children:
   - {fileID: 735433324}
   m_Father: {fileID: 0}
-  m_RootOrder: 2
+  m_RootOrder: 5
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &725671020
 GameObject:
@@ -3837,7 +3837,7 @@ Transform:
   m_Children:
   - {fileID: 650167894}
   m_Father: {fileID: 0}
-  m_RootOrder: 0
+  m_RootOrder: 3
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &803283717
 GameObject:
@@ -4065,7 +4065,7 @@ Transform:
   - {fileID: 574884414}
   - {fileID: 699208557}
   m_Father: {fileID: 0}
-  m_RootOrder: 4
+  m_RootOrder: 1
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &841306422
 GameObject:
@@ -4190,7 +4190,7 @@ Transform:
   - {fileID: 398783181}
   - {fileID: 1454727327}
   m_Father: {fileID: 0}
-  m_RootOrder: 6
+  m_RootOrder: 7
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &856941833
 GameObject:
@@ -4222,7 +4222,7 @@ Transform:
   - {fileID: 432699020}
   - {fileID: 2060211776}
   m_Father: {fileID: 0}
-  m_RootOrder: 1
+  m_RootOrder: 4
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &862541910
 GameObject:
@@ -5536,7 +5536,7 @@ Transform:
   m_Children:
   - {fileID: 639690204}
   m_Father: {fileID: 0}
-  m_RootOrder: 3
+  m_RootOrder: 6
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1204781724
 GameObject:
@@ -6756,7 +6756,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Create grid
+  m_text: Recreate grid
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -8005,7 +8005,7 @@ GameObject:
   - component: {fileID: 1678672114}
   - component: {fileID: 1678672115}
   m_Layer: 0
-  m_Name: ----- Agent Manager -----
+  m_Name: Agent Manager
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -8025,7 +8025,7 @@ Transform:
   - {fileID: 597178152}
   - {fileID: 1611071286}
   m_Father: {fileID: 0}
-  m_RootOrder: 5
+  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1678672115
 MonoBehaviour:
@@ -8042,7 +8042,7 @@ MonoBehaviour:
   agentPrefab: {fileID: 2697000545291045787, guid: 844d248165cece34783c4a7a8ec61a9b,
     type: 3}
   agentsSpeed: 4
-  quantity: 500
+  quantity: 250
   endPositions:
   - {fileID: 1760888066}
   - {fileID: 1642104499}
@@ -9081,8 +9081,8 @@ Transform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
-  m_Father: {fileID: 2072315359}
-  m_RootOrder: 0
+  m_Father: {fileID: 0}
+  m_RootOrder: 2
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1944178381
 MonoBehaviour:
@@ -9667,37 +9667,6 @@ MonoBehaviour:
         m_Calls: []
   m_LegacyBlendHint: 0
   m_ComponentOwner: {fileID: 531129622}
---- !u!1 &2072315358
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 2072315359}
-  m_Layer: 0
-  m_Name: ----- Other Logic -----
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &2072315359
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2072315358}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_Children:
-  - {fileID: 1944178380}
-  m_Father: {fileID: 0}
-  m_RootOrder: 7
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2083229685
 GameObject:
   m_ObjectHideFlags: 0
