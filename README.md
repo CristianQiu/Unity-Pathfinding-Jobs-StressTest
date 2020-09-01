@@ -5,8 +5,8 @@ Pathfinding is performed for each agent, each frame. There is no local avoidance
 
 Remember to deactivate jobs leak detection and safety checks to avoid overhead.
 
-# My benchmark
-My laptop (i7-7700hq) can handle ~500 agents above 60 fps (at the start of the game). Note that as agents move and get closer to the goal, the computation time decreases, so if you are CPU bound, expect the framerate to increase as agents get closer to the end of the path.
+# Benchmark
+My laptop (i7-7700hq) can handle ~500 agents above 60 fps (at the start of the game) in the provided scene. Note that as agents move and get closer to the goal, the computation time decreases, so if you are CPU bound, expect the framerate to increase as agents get closer to the end of the path.
 
 I encourage you to make a build and play with different number of agents spawned.
 
