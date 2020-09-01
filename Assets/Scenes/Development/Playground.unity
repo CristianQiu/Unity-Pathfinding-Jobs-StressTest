@@ -2066,8 +2066,8 @@ RectTransform:
   m_LocalScale: {x: 0, y: 0, z: 0}
   m_Children:
   - {fileID: 1827203935}
-  - {fileID: 2130063093}
   - {fileID: 2060939406}
+  - {fileID: 2130063093}
   m_Father: {fileID: 851290505}
   m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -4601,7 +4601,7 @@ MonoBehaviour:
   m_FillRect: {fileID: 868833486}
   m_HandleRect: {fileID: 508971459}
   m_Direction: 0
-  m_MinValue: 0
+  m_MinValue: 50
   m_MaxValue: 1000
   m_WholeNumbers: 1
   m_Value: 250
@@ -8668,7 +8668,6 @@ MonoBehaviour:
   agentPrefab: {fileID: 2697000545291045787, guid: 844d248165cece34783c4a7a8ec61a9b,
     type: 3}
   agentsSpeed: 4
-  quantity: 500
   endPositions:
   - {fileID: 1760888066}
   - {fileID: 1642104499}
@@ -8683,6 +8682,8 @@ MonoBehaviour:
   camPivot: {fileID: 597178152}
   camPivotEnd: {fileID: 1611071286}
   graphyPrefab: {fileID: 177638, guid: 0abab5bb77339e4428787a870eb31bd3, type: 3}
+  quantitySlider: {fileID: 840630421}
+  agentsText: {fileID: 274043644}
 --- !u!1 &1679442339
 GameObject:
   m_ObjectHideFlags: 0
@@ -10391,7 +10392,7 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2060939405}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children:
@@ -10399,7 +10400,7 @@ RectTransform:
   - {fileID: 840630420}
   - {fileID: 274043643}
   m_Father: {fileID: 398783181}
-  m_RootOrder: 2
+  m_RootOrder: 1
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0}
   m_AnchorMax: {x: 0.5, y: 0}
@@ -10723,7 +10724,7 @@ RectTransform:
   m_Children:
   - {fileID: 298589790}
   m_Father: {fileID: 398783181}
-  m_RootOrder: 1
+  m_RootOrder: 2
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0}
   m_AnchorMax: {x: 0.5, y: 0}

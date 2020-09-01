@@ -1,4 +1,5 @@
 ﻿using AStar;
+using TMPro;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
@@ -7,6 +8,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Jobs;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 using Random = Unity.Mathematics.Random;
 
 /// <summary>
@@ -293,7 +295,7 @@ public class AgentManager : MonoBehaviour
 
     public GameObject agentPrefab;
     public float agentsSpeed = 10.0f;
-    public int quantity;
+    private int quantity;
 
     public Transform[] endPositions;
 
@@ -307,6 +309,10 @@ public class AgentManager : MonoBehaviour
 
     private void Start()
     {
+        quantity = PlayerPrefs.GetInt("quantity", (int)quantitySlider.value);
+        agentsText.text = "Agents: " + quantity.ToString();
+        quantitySlider.SetValueWithoutNotify(quantity);
+
         Spawn();
         SpawnGraphy();
 
@@ -420,6 +426,8 @@ public class AgentManager : MonoBehaviour
     #region UI
 
     public GameObject graphyPrefab;
+    public Slider quantitySlider;
+    public TextMeshProUGUI agentsText;
 
     private void SpawnGraphy()
     {
@@ -428,6 +436,7 @@ public class AgentManager : MonoBehaviour
 
     public void OnRestartClicked()
     {
+        PlayerPrefs.SetInt("quantity", (int)quantitySlider.value);
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
