@@ -11,4 +11,5 @@ The laptop I used (i7-7700hq) can handle ~500 agents above 60 fps (at the start 
 # Preview
 ![alt-text](./GithubImgs/TeaserGif.gif)
 
+Grid build + agents pathfinding profiling:
 ![alt-text](./GithubImgs/Profiler.png)
