@@ -10,3 +10,5 @@ The laptop I used (i7-7700hq) can handle ~500 agents above 60 fps (at the start 
 
 # Preview
 ![alt-text](./GithubImgs/TeaserGif.gif)
+
+![alt-text](./GithubImgs/Profiler.png)
