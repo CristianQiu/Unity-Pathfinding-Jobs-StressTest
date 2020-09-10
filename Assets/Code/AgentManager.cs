@@ -95,11 +95,6 @@ public class AgentManager : MonoBehaviour
 
         [WriteOnly] public NativeArray<int> nextNodesIndices;
 
-        public void Dispose()
-        {
-            nextNodesIndices.Dispose();
-        }
-
         public FindPathJobParallel(int numNodes, int gridWidth, int numNeighbors, NativeArray<int> startNodesIndices, NativeArray<int> endNodeIndices, NativeArray<NodeNeighbor> nodesNeighbors, NativeArray<NodeType> nodesTypes, int numPaths)
         {
             this.numNodes = numNodes;
@@ -211,6 +206,11 @@ public class AgentManager : MonoBehaviour
             closedSet.Dispose();
         }
 
+        public void Dispose()
+        {
+            nextNodesIndices.Dispose();
+        }
+
         private int PopLowestFCostNodeIndexFromOpenSet(NativeList<int> openSet, NativeArray<NodePathFindInfo> nodesInfo)
         {
             int foundAtIndex = -1;
@@ -295,9 +295,9 @@ public class AgentManager : MonoBehaviour
 
     public GameObject agentPrefab;
     public float agentsSpeed = 10.0f;
-    private int quantity;
-
     public Transform[] endPositions;
+
+    private int quantity;
 
     private NativeArray<Vector3> endPositionsToChooseFrom;
     private Transform[] agentsTransforms;
@@ -305,7 +305,7 @@ public class AgentManager : MonoBehaviour
 
     #endregion
 
-    #region Methods
+    #region MonoBehaviour
 
     private void Start()
     {
@@ -371,6 +371,10 @@ public class AgentManager : MonoBehaviour
         endPositionsToChooseFrom.Dispose();
         agentsTransAcc.Dispose();
     }
+
+    #endregion
+
+    #region Methods
 
     private void Spawn()
     {
