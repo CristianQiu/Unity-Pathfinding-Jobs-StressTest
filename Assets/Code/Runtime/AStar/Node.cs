@@ -132,7 +132,7 @@ namespace AStar
     /// <summary>
     /// The types of nodes that we can have, regarding their walkability.
     /// </summary>
-    public enum NodeType
+    public enum NodeType : byte
     {
         Free, // < valid node with floor below, free to walk over
         OccupiedByCharacter, // < with a character over it, walkable but only by the character standing on it

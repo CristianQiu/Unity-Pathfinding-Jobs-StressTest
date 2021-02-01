@@ -146,7 +146,7 @@ public class AgentManager : MonoBehaviour
                     NodeType nodeType = nodesTypes[neighborIndex];
 
                     // can't be walked by
-                    if ((int)nodeType > 0)
+                    if ((byte)nodeType > 0)
                         continue;
 
                     NodePathFindInfo neighborNodeInfo = nodesInfo[neighborIndex];
@@ -341,11 +341,11 @@ public class AgentManager : MonoBehaviour
 
         UpdateCamPivot(dt);
 
-        moveHandle.Complete();
+        JobHandle disposeHandle = calcStartEndJob.startPositionsIndices.Dispose(findPathsHandle);
+        disposeHandle = JobHandle.CombineDependencies(disposeHandle, calcStartEndJob.endPositionsIndices.Dispose(findPathsHandle));
+        disposeHandle = JobHandle.CombineDependencies(disposeHandle, findPathsJob.nextNodesIndices.Dispose(moveHandle));
 
-        calcStartEndJob.startPositionsIndices.Dispose();
-        calcStartEndJob.endPositionsIndices.Dispose();
-        findPathsJob.nextNodesIndices.Dispose();
+        JobHandle.CompleteAll(ref moveHandle, ref disposeHandle);
 
 #if !UNITY_EDITOR
         if (Keyboard.current.escapeKey.wasPressedThisFrame)
@@ -358,8 +358,10 @@ public class AgentManager : MonoBehaviour
 
     private void OnDestroy()
     {
-        agentsTransAcc.Dispose();
-        endPositionsToChooseFrom.Dispose();
+        if (agentsTransAcc.isCreated)
+            agentsTransAcc.Dispose();
+        if (endPositionsToChooseFrom.IsCreated)
+            endPositionsToChooseFrom.Dispose();
     }
 
     #endregion

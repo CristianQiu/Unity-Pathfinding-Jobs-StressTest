@@ -102,14 +102,6 @@ namespace AStar
                 Vector3 startRayPos = new Vector3(x, y, z);
                 commands[index] = new RaycastCommand(startRayPos, Vector3.down, settings.extents.y * 2.0f, settings.mask, 1);
             }
-
-            /// <summary>
-            /// Deallocates native datastructures used by the job.
-            /// </summary>
-            public void Dispose()
-            {
-                commands.Dispose();
-            }
         }
 
         /// <summary>
@@ -180,14 +172,6 @@ namespace AStar
                 Vector3 halfExtents = new Vector3(halfWidth, 0.01f, halfDepth);
 
                 commands[index] = new BoxcastCommand(center, halfExtents, nt.GetRotation(), nt.Up, settings.maxCharacterHeight, settings.mask);
-            }
-
-            /// <summary>
-            /// Deallocates native datastructures used by the job.
-            /// </summary>
-            public void Dispose()
-            {
-                commands.Dispose();
             }
         }
 
@@ -446,13 +430,14 @@ namespace AStar
             CalculateNeighborsJob calculateNeighborsJob = new CalculateNeighborsJob(nodesNeighbors, nodesTransforms, scanSettings, maxWalkableStep);
             JobHandle calculateNeighborsHandle = calculateNeighborsJob.Schedule(gridDimension, 32, bakeObstaclesHandle);
 
+            // schedule disposing the stuff
+            JobHandle disposeHandle = calculateCommandsJob.commands.Dispose(createNodesHandle);
+            disposeHandle = JobHandle.CombineDependencies(disposeHandle, nodeHits.Dispose(createNodesHandle));
+            disposeHandle = JobHandle.CombineDependencies(disposeHandle, calculateBoxcastCommandsJob.commands.Dispose(boxcastCommandHandle));
+            disposeHandle = JobHandle.CombineDependencies(disposeHandle, obstacleHits.Dispose(bakeObstaclesHandle));
+
             // wait to complete all the scheduled stuff
             calculateNeighborsHandle.Complete();
-
-            calculateCommandsJob.Dispose();
-            nodeHits.Dispose();
-            calculateBoxcastCommandsJob.Dispose();
-            obstacleHits.Dispose();
 
             gridWidth = scanSettings.gridWidth;
             gridDepth = scanSettings.gridDepth;
