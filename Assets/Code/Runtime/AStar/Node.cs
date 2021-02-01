@@ -3,12 +3,8 @@ using UnityLibrary;
 
 namespace AStar
 {
-    // Note: The structures defined here are kind of ECSque oriented to optimize cache. I could just
-    // look into Unity's ECS but I'd rather just rely on Jobs until it is officially released. All
-    // the structures combined would translate to a "Node" class in traditional OOP.
-
     /// <summary>
-    /// Our needed transform information for a node.
+    /// The needed transform information for a node.
     /// </summary>
     public struct NodeTransform
     {
@@ -81,42 +77,6 @@ namespace AStar
             return Quaternion.LookRotation(fwd, up);
         }
 
-        /// <summary>
-        /// Gets the given corner point with the given extension, to virtually scale the node.
-        /// </summary>
-        /// <param name="corner"></param>
-        /// <param name="extension"></param>
-        /// <param name="upwardsFactor"></param>
-        /// <returns></returns>
-        public Vector3 GetCorner(NodeRelativeCorner corner, float extension, float upwardsFactor)
-        {
-            Vector3 p = Pos;
-            extension *= 0.5f;
-
-            switch (corner)
-            {
-                case NodeRelativeCorner.TopLeft:
-                    p += (fwd - right) * extension;
-                    break;
-
-                case NodeRelativeCorner.TopRight:
-                    p += (fwd + right) * extension;
-                    break;
-
-                case NodeRelativeCorner.BotRight:
-                    p += (-fwd + right) * extension;
-                    break;
-
-                case NodeRelativeCorner.BotLeft:
-                    p += (-fwd - right) * extension;
-                    break;
-            }
-
-            p += (upwardsFactor * up);
-
-            return p;
-        }
-
         #endregion
     }
 
@@ -170,17 +130,6 @@ namespace AStar
     }
 
     /// <summary>
-    /// The corners of the node, useful for visual representations.
-    /// </summary>
-    public enum NodeRelativeCorner
-    {
-        TopLeft,
-        TopRight,
-        BotRight,
-        BotLeft
-    }
-
-    /// <summary>
     /// The types of nodes that we can have, regarding their walkability.
     /// </summary>
     public enum NodeType
@@ -197,6 +146,6 @@ namespace AStar
     public enum NeighborLayout
     {
         Four = 4,
-        //Eight = 8 // < not implemented at all. We are not using it, and won't
+        //Eight = 8 // < not implemented at all
     }
 }

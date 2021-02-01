@@ -44,22 +44,6 @@ namespace UnityLibrary
             return GetOrAddComponent<T>(transform.gameObject, out hadToCreateIt);
         }
 
-        /// <summary>
-        /// Destroys the given object from the unity engine and nulls out the object after destroyed.
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="unityEngineObject"></param>
-        /// <param name="immediate"></param>
-        public static void Destroy<T>(ref T unityEngineObject, bool immediate = false) where T : Object
-        {
-            if (!immediate)
-                Object.Destroy(unityEngineObject);
-            else
-                Object.DestroyImmediate(unityEngineObject);
-
-            unityEngineObject = null;
-        }
-
         #endregion
     }
 }

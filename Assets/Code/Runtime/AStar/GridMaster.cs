@@ -14,6 +14,64 @@ namespace AStar
     /// </summary>
     public partial class GridMaster : MonoBehaviourSingleton<GridMaster>
     {
+        #region Definitions
+
+        /// <summary>
+        /// Structure wrapping the needed settings to scan the area searching for colliders.
+        /// </summary>
+        private struct ScanAreaSettings
+        {
+            public readonly Vector3 center;
+            public readonly Vector3 extents;
+            public readonly Vector3 flooredExtents;
+            public readonly LayerMask mask;
+            public readonly int gridWidth;
+            public readonly int gridDepth;
+            public readonly int dimension;
+
+            public ScanAreaSettings(Vector3 center, Vector3 extents, LayerMask mask)
+            {
+                this.center = center;
+                this.extents = extents;
+
+                // TODO: Don't allow negative extents when editing the collider
+                float restX = extents.x % NodeSize;
+                float restY = extents.y % NodeSize;
+                float restZ = extents.z % NodeSize;
+
+                float flooredX = extents.x - restX;
+                float flooredY = extents.y - restY;
+                float flooredZ = extents.z - restZ;
+
+                flooredExtents = new Vector3(flooredX, flooredY, flooredZ);
+
+                this.mask = mask;
+
+                gridWidth = Mathf.FloorToInt(flooredExtents.x / NodeSize) * 2;
+                gridDepth = Mathf.FloorToInt(flooredExtents.z / NodeSize) * 2;
+                dimension = gridWidth * gridDepth;
+            }
+        }
+
+        /// <summary>
+        /// The settings required by the job that bakes the obstacles using boxcasts.
+        /// </summary>
+        private struct BakeObstaclesSettings
+        {
+            public readonly float maxCharacterHeight;
+            public readonly float boxNodePercentage;
+            public readonly LayerMask mask;
+
+            public BakeObstaclesSettings(float maxCharacterHeight, float boxNodePercentage, LayerMask mask)
+            {
+                this.maxCharacterHeight = maxCharacterHeight;
+                this.boxNodePercentage = boxNodePercentage;
+                this.mask = mask;
+            }
+        }
+
+        #endregion
+
         #region Grid Creation Jobs
 
         /// <summary>
@@ -99,7 +157,7 @@ namespace AStar
         {
             [WriteOnly] public NativeArray<BoxcastCommand> commands;
             [ReadOnly] private readonly BakeObstaclesSettings settings;
-            [ReadOnly] private NativeArray<NodeTransform> nodesTransforms;
+            [ReadOnly] private readonly NativeArray<NodeTransform> nodesTransforms;
 
             public CalculateBoxcastCommandsJob(BakeObstaclesSettings settings, NativeArray<NodeTransform> nodesTransforms)
             {
@@ -141,7 +199,7 @@ namespace AStar
         private struct BakeObstaclesJob : IJobParallelFor
         {
             private NativeArray<NodeType> nodesTypes;
-            [ReadOnly] private NativeArray<RaycastHit> boxcastHits;
+            [ReadOnly] private readonly NativeArray<RaycastHit> boxcastHits;
 
             public BakeObstaclesJob(NativeArray<NodeType> nodesTypes, NativeArray<RaycastHit> boxcastHits)
             {
@@ -176,14 +234,14 @@ namespace AStar
             [WriteOnly, NativeDisableParallelForRestriction] private NativeArray<NodeNeighbor> neighbors;
             [ReadOnly] private readonly NativeArray<NodeTransform> nodesTransforms;
             [ReadOnly] private readonly ScanAreaSettings scanSettings;
-            [ReadOnly] private readonly CalculateNeighborSettings neighborSettings;
+            [ReadOnly] private readonly float maxWalkableStep;
 
-            public CalculateNeighborsJob(NativeArray<NodeNeighbor> neighbors, NativeArray<NodeTransform> nodesTransforms, ScanAreaSettings scanSettings, CalculateNeighborSettings neighborSettings)
+            public CalculateNeighborsJob(NativeArray<NodeNeighbor> neighbors, NativeArray<NodeTransform> nodesTransforms, ScanAreaSettings scanSettings, float maxWalkableStep)
             {
                 this.neighbors = neighbors;
                 this.nodesTransforms = nodesTransforms;
                 this.scanSettings = scanSettings;
-                this.neighborSettings = neighborSettings;
+                this.maxWalkableStep = maxWalkableStep;
             }
 
             /// <inheritdoc/>
@@ -251,80 +309,10 @@ namespace AStar
                 if ((sameCol && dotRightsAbs >= dotThreshold) || (sameRow && dotFwdsAbs >= dotThreshold))
                 {
                     // the node can be reached if the distance in height meets the requirements
-                    canReachNeighbor = Maths.Dist(nt.Pos.y, ntn.Pos.y) <= neighborSettings.maxWalkableHeightWithStep;
+                    canReachNeighbor = Maths.Dist(nt.Pos.y, ntn.Pos.y) <= maxWalkableStep;
                 }
 
                 return canReachNeighbor;
-            }
-        }
-
-        #endregion
-
-        #region Definitions
-
-        /// <summary>
-        /// Structure wrapping the needed settings to scan the area searching for colliders.
-        /// </summary>
-        private struct ScanAreaSettings
-        {
-            public readonly int gridWidth;
-            public readonly int gridDepth;
-            public readonly Vector3 center;
-            public readonly Vector3 extents;
-            public readonly Vector3 flooredExtents;
-            public readonly LayerMask mask;
-
-            public ScanAreaSettings(Vector3 center, Vector3 extents, LayerMask mask)
-            {
-                this.center = center;
-                this.extents = extents;
-                this.mask = mask;
-
-                // TODO: Don't allow negative extents when editing the collider
-                float restX = extents.x % NodeSize;
-                float restY = extents.y % NodeSize;
-                float restZ = extents.z % NodeSize;
-
-                float flooredX = extents.x - restX;
-                float flooredY = extents.y - restY;
-                float flooredZ = extents.z - restZ;
-
-                flooredExtents = new Vector3(flooredX, flooredY, flooredZ);
-
-                this.gridWidth = Mathf.FloorToInt(flooredExtents.x / NodeSize) * 2;
-                this.gridDepth = Mathf.FloorToInt(flooredExtents.z / NodeSize) * 2;
-            }
-        }
-
-        /// <summary>
-        /// The settings required by the job that bakes the obstacles using boxcasts.
-        /// </summary>
-        private struct BakeObstaclesSettings
-        {
-            public readonly float maxCharacterHeight;
-            public readonly float boxNodePercentage;
-            public readonly LayerMask mask;
-
-            public BakeObstaclesSettings(float maxCharacterHeight, float boxNodePercentage, LayerMask mask)
-            {
-                this.maxCharacterHeight = maxCharacterHeight;
-                this.boxNodePercentage = boxNodePercentage;
-                this.mask = mask;
-            }
-        }
-
-        /// <summary>
-        /// The settings required to calculate the neighbors.
-        /// </summary>
-        private struct CalculateNeighborSettings
-        {
-            public readonly float maxWalkableHeightWithSlope;
-            public readonly float maxWalkableHeightWithStep;
-
-            public CalculateNeighborSettings(float maxWalkableHeightWithSlope, float maxWalkableHeightWithStep)
-            {
-                this.maxWalkableHeightWithSlope = maxWalkableHeightWithSlope;
-                this.maxWalkableHeightWithStep = maxWalkableHeightWithStep;
             }
         }
 
@@ -346,9 +334,8 @@ namespace AStar
         [SerializeField] private LayerMask obstacleMask = default;
 
         [SerializeField, Range(0.0f, 5.0f)] private float maxCharacterHeight = 2.0f;
-        [SerializeField, Range(0.0f, 1.0f)] private float boxToNodeObstaclePercentage = 0.95f;
-        [SerializeField, Range(0.0f, 1.0f)] private float maxWalkableHeightWithSlope = 0.5f;
-        [SerializeField, Range(0.0f, 1.0f)] private float maxWalkableHeightWithStep = 0.25f;
+        [SerializeField, Range(0.1f, 1.0f)] private float boxToNodeObstaclePercentage = 0.95f;
+        [SerializeField, Range(0.0f, 1.0f)] private float maxWalkableStep = 0.25f;
 
         private BoxCollider scanCollider;
         private bool isGridCreated;
@@ -402,13 +389,7 @@ namespace AStar
 
         private void OnDestroy()
         {
-            if (isGridCreated)
-            {
-                isGridCreated = false;
-                nodesTransforms.Dispose();
-                nodesTypes.Dispose();
-                nodesNeighbors.Dispose();
-            }
+            DestroyGrid();
 
 #if DEBUG_RENDER
             DisposeDebugNativeDatastructures();
@@ -424,32 +405,23 @@ namespace AStar
         /// </summary>
         public void CreateGrid()
         {
-            Bounds scanBounds = scanCollider.bounds;
+            DestroyGrid();
 
             // Note: perhaps we might want to snap the extents value when editing the bounding box
             // in the editor?
+            Bounds scanBounds = scanCollider.bounds;
             ScanAreaSettings scanSettings = new ScanAreaSettings(scanBounds.center, scanBounds.extents, walkableMask);
-            gridWidth = scanSettings.gridWidth;
-            gridDepth = scanSettings.gridDepth;
-
-            int gridDimension = gridWidth * gridDepth;
-
-            if (isGridCreated)
-            {
-                nodesTransforms.Dispose();
-                nodesTypes.Dispose();
-                nodesNeighbors.Dispose();
-            }
+            int gridDimension = scanSettings.dimension;
 
             nodesTransforms = new NativeArray<NodeTransform>(gridDimension, Allocator.Persistent);
             nodesTypes = new NativeArray<NodeType>(gridDimension, Allocator.Persistent);
             nodesNeighbors = new NativeArray<NodeNeighbor>(gridDimension * NodeNeighbors, Allocator.Persistent);
 
-            // calculate the raycasts commands
+            // calculate the raycast commands
             CalculateRaycastCommandsJob calculateCommandsJob = new CalculateRaycastCommandsJob(scanSettings);
             JobHandle calculateCommandsHandle = calculateCommandsJob.Schedule(gridDimension, 32);
 
-            // schedule the commands to retrieve the hits
+            // schedule the raycast commands to retrieve the hits
             NativeArray<RaycastHit> nodeHits = new NativeArray<RaycastHit>(gridDimension, Allocator.TempJob);
             JobHandle raycastCommandHandle = RaycastCommand.ScheduleBatch(calculateCommandsJob.commands, nodeHits, 1, calculateCommandsHandle);
 
@@ -457,11 +429,12 @@ namespace AStar
             CreateNodesJob createNodesJob = new CreateNodesJob(nodesTransforms, nodesTypes, nodeHits, calculateCommandsJob.commands);
             JobHandle createNodesHandle = createNodesJob.Schedule(gridDimension, 32, raycastCommandHandle);
 
-            // calculate the boxcast to bake obstacles
+            // calculate the boxcast commands to bake obstacles
             BakeObstaclesSettings bakeObstaclesSettings = new BakeObstaclesSettings(maxCharacterHeight, boxToNodeObstaclePercentage, obstacleMask);
             CalculateBoxcastCommandsJob calculateBoxcastCommandsJob = new CalculateBoxcastCommandsJob(bakeObstaclesSettings, nodesTransforms);
             JobHandle calculateBoxcastHandle = calculateBoxcastCommandsJob.Schedule(gridDimension, 32, createNodesHandle);
 
+            // schedule the boxcast commands to retrieve the hits
             NativeArray<RaycastHit> obstacleHits = new NativeArray<RaycastHit>(gridDimension, Allocator.TempJob);
             JobHandle boxcastCommandHandle = BoxcastCommand.ScheduleBatch(calculateBoxcastCommandsJob.commands, obstacleHits, 1, calculateBoxcastHandle);
 
@@ -470,22 +443,41 @@ namespace AStar
             JobHandle bakeObstaclesHandle = bakeObstaclesJob.Schedule(gridDimension, 32, boxcastCommandHandle);
 
             // now calculate the neighbors
-            CalculateNeighborSettings neighborSettings = new CalculateNeighborSettings(maxWalkableHeightWithSlope, maxWalkableHeightWithStep);
-            CalculateNeighborsJob calculateNeighborsJob = new CalculateNeighborsJob(nodesNeighbors, nodesTransforms, scanSettings, neighborSettings);
+            CalculateNeighborsJob calculateNeighborsJob = new CalculateNeighborsJob(nodesNeighbors, nodesTransforms, scanSettings, maxWalkableStep);
             JobHandle calculateNeighborsHandle = calculateNeighborsJob.Schedule(gridDimension, 32, bakeObstaclesHandle);
 
             // wait to complete all the scheduled stuff
             calculateNeighborsHandle.Complete();
 
             calculateCommandsJob.Dispose();
-            calculateBoxcastCommandsJob.Dispose();
             nodeHits.Dispose();
+            calculateBoxcastCommandsJob.Dispose();
             obstacleHits.Dispose();
+
+            gridWidth = scanSettings.gridWidth;
+            gridDepth = scanSettings.gridDepth;
+            isGridCreated = true;
 
 #if DEBUG_RENDER
             RecalculateDebug();
 #endif
-            isGridCreated = true;
+        }
+
+        /// <summary>
+        /// Destroys the grid.
+        /// </summary>
+        public void DestroyGrid()
+        {
+            isGridCreated = false;
+            gridWidth = 0;
+            gridDepth = 0;
+
+            if (nodesTransforms.IsCreated)
+                nodesTransforms.Dispose();
+            if (nodesTypes.IsCreated)
+                nodesTypes.Dispose();
+            if (nodesNeighbors.IsCreated)
+                nodesNeighbors.Dispose();
         }
 
         #endregion

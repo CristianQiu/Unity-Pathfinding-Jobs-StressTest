@@ -4,6 +4,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Jobs;
@@ -64,7 +65,6 @@ public class AgentManager : MonoBehaviour
                 localPos.z < -flooredExtents.z || localPos.z > flooredExtents.z)
                 return index;
 
-            // get rid of negative values
             localPos += flooredExtents;
 
             int row = Mathf.FloorToInt(localPos.z / nodeSize);
@@ -72,51 +72,25 @@ public class AgentManager : MonoBehaviour
 
             return row * gridWidth + col;
         }
-
-        public void Dispose()
-        {
-            startPositionsIndices.Dispose();
-            endPositionsIndices.Dispose();
-        }
     }
 
     [BurstCompile]
     private struct FindPathJobParallel : IJobParallelFor
     {
-        [ReadOnly] private int numNodes;
-        [ReadOnly] private int gridWidth;
-        [ReadOnly] private int numNeighbors;
+        [ReadOnly] public int numNodes;
+        [ReadOnly] public int gridWidth;
+        [ReadOnly] public int numNeighbors;
 
-        [ReadOnly] private NativeArray<int> startNodesIndices;
-        [ReadOnly] private NativeArray<int> endNodeIndices;
+        [ReadOnly] public NativeArray<int> startNodesIndices;
+        [ReadOnly] public NativeArray<int> endNodeIndices;
 
-        [ReadOnly] private NativeArray<NodeNeighbor> nodesNeighbors;
-        [ReadOnly] private NativeArray<NodeType> nodesTypes;
+        [ReadOnly] public NativeArray<NodeNeighbor> nodesNeighbors;
+        [ReadOnly] public NativeArray<NodeType> nodesTypes;
 
         [WriteOnly] public NativeArray<int> nextNodesIndices;
 
-        public FindPathJobParallel(int numNodes, int gridWidth, int numNeighbors, NativeArray<int> startNodesIndices, NativeArray<int> endNodeIndices, NativeArray<NodeNeighbor> nodesNeighbors, NativeArray<NodeType> nodesTypes, int numPaths)
-        {
-            this.numNodes = numNodes;
-            this.gridWidth = gridWidth;
-            this.numNeighbors = numNeighbors;
-
-            this.startNodesIndices = startNodesIndices;
-            this.endNodeIndices = endNodeIndices;
-
-            this.nodesNeighbors = nodesNeighbors;
-            this.nodesTypes = nodesTypes;
-
-            this.nextNodesIndices = new NativeArray<int>(numPaths, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-        }
-
         public void Execute(int index)
         {
-            NativeArray<NodePathFindInfo> nodesInfo = new NativeArray<NodePathFindInfo>(numNodes, Allocator.Temp);
-            NativeList<int> openSet = new NativeList<int>(numNodes / 4, Allocator.Temp);
-
-            NativeArray<byte> closedSet = new NativeArray<byte>(numNodes, Allocator.Temp);
-
             int startNodeIndex = startNodesIndices[index];
             int endNodeIndex = endNodeIndices[index];
 
@@ -127,7 +101,10 @@ public class AgentManager : MonoBehaviour
                 return;
             }
 
-            NativeArray<byte> openSetContains = new NativeArray<byte>(numNodes, Allocator.Temp);
+            NativeArray<NodePathFindInfo> nodesInfo = new NativeArray<NodePathFindInfo>(numNodes, Allocator.Temp);
+            NativeList<int> openSet = new NativeList<int>(numNodes / 4, Allocator.Temp);
+            NativeBitArray openSetContains = new NativeBitArray(numNodes, Allocator.Temp);
+            NativeBitArray closedSet = new NativeBitArray(numNodes, Allocator.Temp);
 
             // set the info for the first node
             nodesInfo[startNodeIndex] = new NodePathFindInfo(0, GetHeuristic(startNodeIndex, endNodeIndex), -1);
@@ -150,7 +127,7 @@ public class AgentManager : MonoBehaviour
                 }
 
                 // add it to the closed set by setting a flag at its index
-                closedSet[currNodeIndex] = 1;
+                closedSet.Set(currNodeIndex, true);
                 NodePathFindInfo currNodeInfo = nodesInfo[currNodeIndex];
 
                 // go over the neighbors
@@ -163,7 +140,7 @@ public class AgentManager : MonoBehaviour
                     bool valid = nodesNeighbors[i].isValid;
 
                     // if it does not have neighbor or was already expanded
-                    if (!valid || closedSet[neighborIndex] == 1)
+                    if (!valid || closedSet.IsSet(neighborIndex))
                         continue;
 
                     NodeType nodeType = nodesTypes[neighborIndex];
@@ -176,7 +153,7 @@ public class AgentManager : MonoBehaviour
                     int newGCost = currNodeInfo.gCost + GetHeuristic(currNodeIndex, neighborIndex);
 
                     // not in open set
-                    if (openSetContains[neighborIndex] != 1)
+                    if (!openSetContains.IsSet(neighborIndex))
                     {
                         // update parent, costs, and add to the open set
                         neighborNodeInfo.gCost = newGCost;
@@ -185,7 +162,7 @@ public class AgentManager : MonoBehaviour
 
                         nodesInfo[neighborIndex] = neighborNodeInfo;
                         openSet.AddNoResize(neighborIndex);
-                        openSetContains[neighborIndex] = 1;
+                        openSetContains.Set(neighborIndex, true);
                     }
                     else if (newGCost < neighborNodeInfo.gCost)
                     {
@@ -204,11 +181,6 @@ public class AgentManager : MonoBehaviour
             openSetContains.Dispose();
             openSet.Dispose();
             closedSet.Dispose();
-        }
-
-        public void Dispose()
-        {
-            nextNodesIndices.Dispose();
         }
 
         private int PopLowestFCostNodeIndexFromOpenSet(NativeList<int> openSet, NativeArray<NodePathFindInfo> nodesInfo)
@@ -285,7 +257,7 @@ public class AgentManager : MonoBehaviour
                 return;
 
             Vector3 offset = nodes[nodeIndex].Pos + new Vector3(0.0f, transform.localScale.y * 0.5f, 0.0f) - transform.position;
-            transform.position = transform.position + (offset.normalized * (speed * dt));
+            transform.position = transform.position + offset.normalized * (speed * dt);
         }
     }
 
@@ -293,19 +265,21 @@ public class AgentManager : MonoBehaviour
 
     #region Attributes
 
-    public GameObject agentPrefab;
-    public float agentsSpeed = 10.0f;
-    public Transform[] endPositions;
+    [Header("Agents")]
+    [SerializeField] private GameObject agentPrefab = null;
+
+    [SerializeField] private float agentsSpeed = 10.0f;
+    [SerializeField] private Transform[] endPositions = null;
 
     private int quantity;
 
-    private NativeArray<Vector3> endPositionsToChooseFrom;
     private Transform[] agentsTransforms;
     private TransformAccessArray agentsTransAcc;
+    private NativeArray<Vector3> endPositionsToChooseFrom;
 
     #endregion
 
-    #region MonoBehaviour
+    #region MonoBehaviour Methods
 
     private void Start()
     {
@@ -313,7 +287,7 @@ public class AgentManager : MonoBehaviour
         agentsText.text = "Agents: " + quantity.ToString();
         quantitySlider.SetValueWithoutNotify(quantity);
 
-        Spawn();
+        SpawnAgents();
         SpawnGraphy();
 
         endPositionsToChooseFrom = new NativeArray<Vector3>(endPositions.Length, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
@@ -323,6 +297,7 @@ public class AgentManager : MonoBehaviour
 
     private void Update()
     {
+        float dt = Time.deltaTime;
         GridMaster gm = GridMaster.Instance;
 
         CalculateStartEndPosJob calcStartEndJob = new CalculateStartEndPosJob()
@@ -332,17 +307,26 @@ public class AgentManager : MonoBehaviour
             nodeSize = GridMaster.NodeSize,
             isGridCreated = gm.IsGridCreated,
             gridWidth = gm.GridWidth,
-
+            rand = new Random(0x6E624EB7u),
             endPositionsToChooseFrom = endPositionsToChooseFrom,
-
             startPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory),
-            endPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory),
-            rand = new Random(0x6E624EB7u)
+            endPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory)
         };
 
         JobHandle calcStartEndHandle = calcStartEndJob.Schedule(agentsTransAcc);
 
-        FindPathJobParallel findPathsJob = new FindPathJobParallel(gm.GridWidth * gm.GridDepth, gm.GridWidth, 4, calcStartEndJob.startPositionsIndices, calcStartEndJob.endPositionsIndices, gm.NodesNeighbors, gm.NodesTypes, quantity);
+        FindPathJobParallel findPathsJob = new FindPathJobParallel()
+        {
+            numNodes = gm.GridWidth * gm.GridDepth,
+            gridWidth = gm.GridWidth,
+            numNeighbors = GridMaster.NodeNeighbors,
+            startNodesIndices = calcStartEndJob.startPositionsIndices,
+            endNodeIndices = calcStartEndJob.endPositionsIndices,
+            nodesNeighbors = gm.NodesNeighbors,
+            nodesTypes = gm.NodesTypes,
+            nextNodesIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory),
+        };
+
         JobHandle findPathsHandle = findPathsJob.Schedule(quantity, 4, calcStartEndHandle);
 
         MoveAgentsJob moveJob = new MoveAgentsJob()
@@ -350,43 +334,49 @@ public class AgentManager : MonoBehaviour
             nodeIndicesDestinations = findPathsJob.nextNodesIndices,
             nodes = gm.NodesTransforms,
             speed = agentsSpeed,
-            dt = Time.deltaTime
+            dt = dt
         };
 
         JobHandle moveHandle = moveJob.Schedule(agentsTransAcc, findPathsHandle);
 
-        UpdateCamPivot();
+        UpdateCamPivot(dt);
 
         moveHandle.Complete();
 
-        findPathsJob.Dispose();
-        calcStartEndJob.Dispose();
+        calcStartEndJob.startPositionsIndices.Dispose();
+        calcStartEndJob.endPositionsIndices.Dispose();
+        findPathsJob.nextNodesIndices.Dispose();
 
+#if !UNITY_EDITOR
         if (Keyboard.current.escapeKey.wasPressedThisFrame)
             Application.Quit();
+#else
+        if (Keyboard.current.escapeKey.wasPressedThisFrame)
+            EditorApplication.isPlaying = false;
+#endif
     }
 
     private void OnDestroy()
     {
-        endPositionsToChooseFrom.Dispose();
         agentsTransAcc.Dispose();
+        endPositionsToChooseFrom.Dispose();
     }
 
     #endregion
 
     #region Methods
 
-    private void Spawn()
+    private void SpawnAgents()
     {
         agentsTransforms = new Transform[quantity];
 
         for (int i = 0; i < quantity; i++)
         {
-            // having no parent is actually very important. Sharing the parent will prevent the job
-            // system to split calculations across threads
+            // having no parent is actually important. Sharing the parent will prevent the job
+            // system to split calculations across threads properly
             agentsTransforms[i] = Instantiate(agentPrefab, null).transform;
 
-            float t = (float)i / (float)quantity;
+            float t = (float)i / (float)(quantity - 1);
 
             float x = t * 90.0f;
             x -= 45.0f;
@@ -410,16 +400,19 @@ public class AgentManager : MonoBehaviour
 
     #endregion
 
-    #region Cam pivot
+    #region Cam
 
-    public Transform camPivot;
-    public Transform camPivotEnd;
+    [Header("Camera")]
+    [SerializeField] private Transform camPivot = null;
 
-    private void UpdateCamPivot()
+    [SerializeField] private Transform camPivotEnd = null;
+
+    private void UpdateCamPivot(float dt)
     {
         Vector3 inc = camPivotEnd.position - camPivot.position;
+        inc.y = 0.0f;
 
-        Vector3 delta = inc.normalized * (agentsSpeed * 1.2f * Time.deltaTime);
+        Vector3 delta = inc.normalized * (agentsSpeed * 1.2f * dt);
         delta = Vector3.ClampMagnitude(delta, inc.magnitude);
 
         camPivot.transform.position += delta;
@@ -429,9 +422,11 @@ public class AgentManager : MonoBehaviour
 
     #region UI
 
-    public GameObject graphyPrefab;
-    public Slider quantitySlider;
-    public TextMeshProUGUI agentsText;
+    [Header("UI")]
+    [SerializeField] private GameObject graphyPrefab = null;
+
+    [SerializeField] private Slider quantitySlider = null;
+    [SerializeField] private TextMeshProUGUI agentsText = null;
 
     private void SpawnGraphy()
     {

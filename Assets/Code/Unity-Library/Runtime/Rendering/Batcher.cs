@@ -6,7 +6,7 @@ namespace UnityLibrary
 {
     /// <summary>
     /// Class that can render batches with Graphics.DrawMeshInstanced with different colors, up to a
-    /// maximum amount of different colors defined. One draw call is used per 1023 instances per color.
+    /// maximum amount of different colors defined.
     /// </summary>
     public class Batcher
     {
@@ -38,7 +38,6 @@ namespace UnityLibrary
             /// <param name="matrix"></param>
             public void AddMatrix(Matrix4x4 matrix)
             {
-                // move forward if reached the maximum in the current matrix array
                 if (currArrayIndex >= MaxItemsPerBatch)
                 {
                     currListIndex++;
@@ -118,9 +117,9 @@ namespace UnityLibrary
         /// <param name="matrix"></param>
         public void AddItem(Color32 color, Matrix4x4 matrix)
         {
-            // check if the color was already added to group the matrices
             int foundAtIndex = -1;
 
+            // check if the color was already added to group the matrices
             for (int i = 0; i < batchInfos.Count; i++)
             {
                 if ((Color)batchInfos[i].color == (Color)color)

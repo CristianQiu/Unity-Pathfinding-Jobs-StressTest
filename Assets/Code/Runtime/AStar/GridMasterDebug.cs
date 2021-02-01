@@ -26,10 +26,8 @@ namespace AStar
         private struct CalculateConnectionMeshJob : IJobParallelFor
         {
             [ReadOnly] private readonly int numNeighbors;
-
             [ReadOnly] private readonly NativeArray<NodeTransform> nodesTransforms;
             [ReadOnly] private readonly NativeArray<NodeNeighbor> nodesNeighbors;
-
             [WriteOnly, NativeDisableParallelForRestriction] public NativeArray<Vector3> vertices;
             [WriteOnly, NativeDisableParallelForRestriction] public NativeArray<int> indices;
 

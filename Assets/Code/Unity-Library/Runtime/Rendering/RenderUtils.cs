@@ -21,8 +21,8 @@ namespace UnityLibrary
         {
             Mesh mesh = new Mesh();
             mesh.name = meshName;
-            mesh.MarkDynamic();
             mesh.indexFormat = bufferFormat;
+            mesh.MarkDynamic();
 
             return mesh;
         }
