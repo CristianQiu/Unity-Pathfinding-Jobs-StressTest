@@ -62,10 +62,6 @@ namespace AStar
             /// <inheritdoc/>
             public void Execute(int index)
             {
-                // Note: I may not need this if all non primitive colliders are convex. We launch
-                // five raycasts per node so that we are able to handle realistic stairs. The rays
-                // are set in the following order: middle point, upper right, lower right, lower
-                // left, upper left (that is clockwise and in world space)
                 int row = index / scanSettings.gridWidth;
                 int col = index % scanSettings.gridWidth;
 
@@ -73,23 +69,10 @@ namespace AStar
                 float midZ = scanSettings.center.z - scanSettings.flooredExtents.z + (row * NodeSize) + NodeHalfSize;
                 float y = scanSettings.center.y + scanSettings.extents.y;
 
-                float3 midRayStartPos = new float3(midX, y, midZ);
-                float3 toUpperRightOffset = (math.forward() + math.right()) * (NodeHalfSize - 0.05f);
-                float3 toLowerRightOffset = (math.back() + math.right()) * (NodeHalfSize - 0.05f);
-
-                float3 upperRight = midRayStartPos + toUpperRightOffset;
-                float3 lowerRight = midRayStartPos + toLowerRightOffset;
-                float3 lowerLeft = midRayStartPos - toUpperRightOffset;
-                float3 upperLeft = midRayStartPos - toLowerRightOffset;
-
+                Vector3 startPos = new Vector3(midX, y, midZ);
                 float rayDist = scanSettings.extents.y * 2.0f;
-                Vector3 down = Vector3.down;
 
-                commands[index * 5] = new RaycastCommand((Vector3)midRayStartPos, down, rayDist, scanSettings.mask, 1);
-                commands[index * 5 + 1] = new RaycastCommand((Vector3)upperRight, down, rayDist, scanSettings.mask, 1);
-                commands[index * 5 + 2] = new RaycastCommand((Vector3)lowerRight, down, rayDist, scanSettings.mask, 1);
-                commands[index * 5 + 3] = new RaycastCommand((Vector3)lowerLeft, down, rayDist, scanSettings.mask, 1);
-                commands[index * 5 + 4] = new RaycastCommand((Vector3)upperLeft, down, rayDist, scanSettings.mask, 1);
+                commands[index] = new RaycastCommand(startPos, Vector3.down, rayDist, scanSettings.mask, 1);
             }
         }
 
@@ -109,84 +92,20 @@ namespace AStar
             /// <inheritdoc/>
             public void Execute(int index)
             {
-                RaycastHit midHit = hits[index * 5];
-                RaycastCommand midCommand = commands[index * 5];
+                RaycastHit hit = hits[index];
+                RaycastCommand command = commands[index];
 
                 // we can't check for collider to be null since reference types are not allowed
-                bool validNode = midHit.normal != default(Vector3);
+                bool validNode = hit.normal != default(Vector3);
 
-                float3 pos;
-                float3 normal;
+                float3 commandPos = command.from;
+                commandPos.y = 0.0f;
 
-                if (validNode)
-                {
-                    bool isStair = IsValidIndexNodeStair(index, out float3 fakeStairNormal);
-
-                    normal = math.select((float3)midHit.normal, fakeStairNormal, isStair);
-                    pos = (float3)midHit.point;
-                }
-                else
-                {
-                    pos = new float3(midCommand.from.x, 0.0f, midCommand.from.z);
-                    normal = math.up();
-                }
+                float3 pos = math.select(commandPos, (float3)hit.point, validNode);
+                float3 normal = math.select(math.up(), (float3)hit.normal, validNode);
 
                 nodesTransforms[index] = new NodeTransform(pos, normal);
                 nodesTypes[index] = !validNode ? NodeType.Invalid : NodeType.Free;
-            }
-
-            /// <summary>
-            /// Get whether the valid node index is considered as a stair, and if so return the
-            /// computed "fake" normal, which would belong to the ramp formed by joining the four
-            /// corners of the node.
-            /// </summary>
-            /// <param name="index"></param>
-            /// <param name="computedFakeNormal"></param>
-            /// <returns></returns>
-            private bool IsValidIndexNodeStair(int index, out float3 computedFakeNormal)
-            {
-                float3 mid = (float3)hits[index * 5].point;
-                float3 upperRight = (float3)hits[index * 5 + 1].point;
-                float3 lowerRight = (float3)hits[index * 5 + 2].point;
-                float3 lowerLeft = (float3)hits[index * 5 + 3].point;
-                float3 upperLeft = (float3)hits[index * 5 + 4].point;
-
-                bool isStair = true;
-                computedFakeNormal = float3.zero;
-
-                for (int i = index * 5; i <= index * 5 + 4; i++)
-                {
-                    RaycastHit hit = hits[i];
-
-                    float dot = math.abs(math.dot((float3)hit.normal, math.up()));
-                    float heightDist = math.abs(mid.y - hit.point.y);
-
-                    if (dot <= (1.0f - MinDotErrorToConsiderRamp) || heightDist < MinHeightDistToConsiderStepInSameNode && (i != index * 5))
-                    {
-                        isStair = false;
-                        break;
-                    }
-                }
-
-                if (isStair)
-                {
-                    float3 upperLeftToUpperRight = math.normalize(upperRight - upperLeft);
-                    float3 lowerLeftToLowerRight = math.normalize(lowerRight - lowerLeft);
-
-                    // this is not really necessary but in the case of minimal errors with the
-                    // geometry it may smooth the result
-                    float3 leftToRight = math.normalize(upperLeftToUpperRight + lowerLeftToLowerRight);
-
-                    float3 lowerLeftToUpperLeft = math.normalize(upperLeft - lowerLeft);
-                    float3 lowerRightToUpperRight = math.normalize(upperRight - lowerRight);
-
-                    // same as before, not strictly required
-                    float3 lowerToUpper = math.normalize(lowerLeftToUpperLeft + lowerRightToUpperRight);
-
-                    computedFakeNormal = math.normalize(math.cross(lowerToUpper, leftToRight));
-                }
-
-                return isStair;
             }
         }
 
@@ -428,7 +347,7 @@ namespace AStar
             nodesNeighbors = new NativeArray<NodeNeighbor>(expectedGridDimension * NodeNumNeighbors, Allocator.Persistent);
 
             // calculate the initial raycast commands
-            NativeArray<RaycastCommand> mainCommands = new NativeArray<RaycastCommand>(expectedGridDimension * 5, Allocator.TempJob);
+            NativeArray<RaycastCommand> mainCommands = new NativeArray<RaycastCommand>(expectedGridDimension, Allocator.TempJob);
 
             JobHandle createNodesHandle = new CalculateRaycastCommandsJob
             {
@@ -438,7 +357,7 @@ namespace AStar
             .ScheduleParallel(expectedGridDimension, 64, default(JobHandle));
 
             // schedule the commands to retrieve the initial hits
-            NativeArray<RaycastHit> nodeHits = new NativeArray<RaycastHit>(expectedGridDimension * 5, Allocator.TempJob);
+            NativeArray<RaycastHit> nodeHits = new NativeArray<RaycastHit>(expectedGridDimension, Allocator.TempJob);
             createNodesHandle = RaycastCommand.ScheduleBatch(mainCommands, nodeHits, 32, createNodesHandle);
 
             // build the nodes using the received hits and the main raycast commands
