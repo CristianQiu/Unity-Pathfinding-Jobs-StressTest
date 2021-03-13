@@ -24,8 +24,8 @@ public class AgentManager : MonoBehaviour
     {
         [ReadOnly] public Vector3 gridBoundsCenter;
         [ReadOnly] public Vector3 gridBoundsExtents;
-        [ReadOnly] public float nodeSize;
         [ReadOnly] public bool isGridCreated;
+        [ReadOnly] public float nodeSize;
         [ReadOnly] public int gridWidth;
 
         [ReadOnly] public Random rand;
@@ -51,14 +51,12 @@ public class AgentManager : MonoBehaviour
             Vector3 extents = gridBoundsExtents;
 
             float restX = extents.x % nodeSize;
-            float restY = extents.y % nodeSize;
             float restZ = extents.z % nodeSize;
 
             float flooredX = extents.x - restX;
-            float flooredY = extents.y - restY;
             float flooredZ = extents.z - restZ;
 
-            Vector3 flooredExtents = new Vector3(flooredX, flooredY, flooredZ);
+            Vector3 flooredExtents = new Vector3(flooredX, 0.0f, flooredZ);
 
             if (!isGridCreated ||
                 localPos.x < -flooredExtents.x || localPos.x > flooredExtents.x ||
@@ -102,7 +100,7 @@ public class AgentManager : MonoBehaviour
             }
 
             NativeArray<NodePathFindInfo> nodesInfo = new NativeArray<NodePathFindInfo>(numNodes, Allocator.Temp);
-            NativeList<int> openSet = new NativeList<int>(numNodes / 4, Allocator.Temp);
+            NativeList<int> openSet = new NativeList<int>(272, Allocator.Temp);
             NativeBitArray openSetContains = new NativeBitArray(numNodes, Allocator.Temp);
             NativeBitArray closedSet = new NativeBitArray(numNodes, Allocator.Temp);
 
@@ -118,11 +116,6 @@ public class AgentManager : MonoBehaviour
                 if (currNodeIndex == endNodeIndex)
                 {
                     ReconstructPath(index, startNodeIndex, nodesInfo);
-
-                    nodesInfo.Dispose();
-                    openSetContains.Dispose();
-                    openSet.Dispose();
-                    closedSet.Dispose();
                     return;
                 }
 
@@ -176,11 +169,6 @@ public class AgentManager : MonoBehaviour
             }
 
             nextNodesIndices[index] = -1;
-
-            nodesInfo.Dispose();
-            openSetContains.Dispose();
-            openSet.Dispose();
-            closedSet.Dispose();
         }
 
         private int PopLowestFCostNodeIndexFromOpenSet(NativeList<int> openSet, NativeArray<NodePathFindInfo> nodesInfo)
@@ -267,7 +255,6 @@ public class AgentManager : MonoBehaviour
 
     [Header("Agents")]
     [SerializeField] private GameObject agentPrefab = null;
-
     [SerializeField] private float agentsSpeed = 10.0f;
     [SerializeField] private Transform[] endPositions = null;
 
@@ -310,7 +297,7 @@ public class AgentManager : MonoBehaviour
             rand = new Random(0x6E624EB7u),
             endPositionsToChooseFrom = endPositionsToChooseFrom,
             startPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory),
-            endPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory)
+            endPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory),
         };
 
         JobHandle calcStartEndHandle = calcStartEndJob.Schedule(agentsTransAcc);
@@ -327,14 +314,14 @@ public class AgentManager : MonoBehaviour
             nextNodesIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory),
         };
 
-        JobHandle findPathsHandle = findPathsJob.Schedule(quantity, 4, calcStartEndHandle);
+        JobHandle findPathsHandle = findPathsJob.Schedule(quantity, 1, calcStartEndHandle);
 
         MoveAgentsJob moveJob = new MoveAgentsJob()
         {
             nodeIndicesDestinations = findPathsJob.nextNodesIndices,
             nodes = gm.NodesTransforms,
             speed = agentsSpeed,
-            dt = dt
+            dt = dt,
         };
 
         JobHandle moveHandle = moveJob.Schedule(agentsTransAcc, findPathsHandle);
@@ -406,7 +393,6 @@ public class AgentManager : MonoBehaviour
 
     [Header("Camera")]
     [SerializeField] private Transform camPivot = null;
-
     [SerializeField] private Transform camPivotEnd = null;
 
     private void UpdateCamPivot(float dt)
@@ -426,7 +412,6 @@ public class AgentManager : MonoBehaviour
 
     [Header("UI")]
     [SerializeField] private GameObject graphyPrefab = null;
-
     [SerializeField] private Slider quantitySlider = null;
     [SerializeField] private TextMeshProUGUI agentsText = null;
 

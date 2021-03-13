@@ -12,7 +12,6 @@ namespace AStar
 
         [Header("Toggles")]
         [SerializeField] private Toggle toggleShowNodes = null;
-
         [SerializeField] private Toggle toggleShowNodesConnections = null;
 
         #endregion

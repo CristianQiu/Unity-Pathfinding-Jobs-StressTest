@@ -314,9 +314,7 @@ namespace AStar
 
         [Header("Construction settings")]
         [SerializeField] private LayerMask walkableMask = default;
-
         [SerializeField] private LayerMask obstacleMask = default;
-
         [SerializeField, Range(0.0f, 5.0f)] private float maxCharacterHeight = 2.0f;
         [SerializeField, Range(0.1f, 1.0f)] private float boxToNodeObstaclePercentage = 0.95f;
         [SerializeField, Range(0.0f, 1.0f)] private float maxWalkableStep = 0.25f;
@@ -442,6 +440,8 @@ namespace AStar
             gridWidth = scanSettings.gridWidth;
             gridDepth = scanSettings.gridDepth;
             isGridCreated = true;
+
+            Logger.LogFormat("Grid created with height {0} and width {1}.", gridDepth, gridWidth);
 
 #if DEBUG_RENDER
             RecalculateDebug();

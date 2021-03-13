@@ -83,7 +83,6 @@ namespace AStar
 
         [Header("Debug settings")]
         [SerializeField] private bool showNodes = true;
-
         [SerializeField] private Material nodeMaterial = null;
         [SerializeField] private Color32 invalidNodeColor = new Color32(0, 0, 0, 192);
         [SerializeField] private Color32 walkableNodeColor = new Color32(128, 128, 128, 128);
