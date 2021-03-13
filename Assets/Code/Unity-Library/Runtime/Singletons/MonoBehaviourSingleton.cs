@@ -5,15 +5,17 @@ namespace UnityLibrary
     /// <summary>
     /// Simple class that provides singleton functionality to MonoBehaviours. This class might need
     /// a rework to support edge cases.
-    /// TODO: Add support to editor, ensure that no other script is attached to the gameObject, when DontDestroyOnLoad is used we might not want to have childs...
+    /// TODO: Add support to editor, ensure that no other script is attached to the gameobject, when DontDestroyOnLoad is used we might not want to have childs...
     /// </summary>
     /// <typeparam name="T"></typeparam>
     [DisallowMultipleComponent]
+    [DefaultExecutionOrder(-1)]
     public abstract class MonoBehaviourSingleton<T> : MonoBehaviour where T : MonoBehaviour
     {
         #region Private Attributes
 
         private static T instance;
+        private static bool quittingOrDestroying;
 
         #endregion
 
@@ -23,7 +25,11 @@ namespace UnityLibrary
         {
             get
             {
-                if (instance == null)
+                if (quittingOrDestroying)
+                {
+                    instance = null;
+                }
+                else if (instance == null)
                 {
                     string objName = string.Format("----- Singleton {0} -----", typeof(T).Name);
                     GameObject obj = new GameObject(objName);
@@ -52,6 +58,16 @@ namespace UnityLibrary
 
             if (!DestroyOnLoad)
                 DontDestroyOnLoad(instance);
+        }
+
+        private void OnDestroy()
+        {
+            quittingOrDestroying = true;
+        }
+
+        private void OnApplicationQuit()
+        {
+            quittingOrDestroying = true;
         }
 
         #endregion

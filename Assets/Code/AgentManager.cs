@@ -15,6 +15,7 @@ using Random = Unity.Mathematics.Random;
 /// <summary>
 /// Class to make a quick stress test of the jobified pathfinding.
 /// </summary>
+[DefaultExecutionOrder(1)] // < Make sure the AStar system is initialized so we can safely do stuff on start, like building the grid.
 public class AgentManager : MonoBehaviour
 {
     #region Jobs
@@ -274,6 +275,8 @@ public class AgentManager : MonoBehaviour
         agentsText.text = "Agents: " + quantity.ToString();
         quantitySlider.SetValueWithoutNotify(quantity);
 
+        GridMaster.Instance.CreateGrid();
+
         SpawnAgents();
         SpawnGraphy();
 
@@ -306,7 +309,7 @@ public class AgentManager : MonoBehaviour
         {
             numNodes = gm.GridWidth * gm.GridDepth,
             gridWidth = gm.GridWidth,
-            numNeighbors = GridMaster.NodeNeighbors,
+            numNeighbors = GridMaster.NodeNumNeighbors,
             startNodesIndices = calcStartEndJob.startPositionsIndices,
             endNodeIndices = calcStartEndJob.endPositionsIndices,
             nodesNeighbors = gm.NodesNeighbors,

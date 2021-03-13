@@ -1,6 +1,7 @@
-﻿using Unity.Burst;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
+using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityLibrary;
@@ -8,37 +9,81 @@ using UnityLibrary;
 namespace AStar
 {
     /// <summary>
-    /// This is the partial class supporting GridMaster.cs. It holds all the definitions used by
-    /// debugging to avoid compiling them. The logic however, is still called on the other part of
-    /// the class.
+    /// Class in charge of rendering the grid with the data from the GridMaster.
     /// </summary>
-    public partial class GridMaster
+    public class GridMasterDebug : MonoBehaviourSingleton<GridMasterDebug>
     {
 #if DEBUG_RENDER
 
         #region Jobs
 
         /// <summary>
+        /// Job to calculate the required data for the jobified quad renderer.
+        /// </summary>
+        [BurstCompile]
+        private struct CalculateNodeQuadsDataJob : IJobFor
+        {
+            [WriteOnly] public NativeArray<float3> quadPositions;
+            [WriteOnly] public NativeArray<float3> quadNormals;
+            [WriteOnly] public NativeArray<float2> quadDimensions;
+            [WriteOnly] public NativeArray<quaternion> quadRotations;
+            [WriteOnly] public NativeArray<Color32> quadColors;
+
+            [ReadOnly] public NativeArray<NodeTransform> nodeTransforms;
+            [ReadOnly] public NativeArray<NodeType> nodesTypes;
+
+            public Color32 invalidColor;
+            public Color32 walkableColor;
+            public Color32 nonWalkableColor;
+            public float2 dimension;
+
+            /// <inheritdoc/>
+            public void Execute(int index)
+            {
+                quadPositions[index] = nodeTransforms[index].pos + (nodeTransforms[index].up * NodeVisualNormalOffset);
+                quadNormals[index] = nodeTransforms[index].up;
+                quadDimensions[index] = dimension;
+                quadRotations[index] = nodeTransforms[index].GetRotation();
+
+                switch (nodesTypes[index])
+                {
+                    case NodeType.Free:
+                        quadColors[index] = walkableColor;
+                        break;
+
+                    case NodeType.OccupiedByCharacter:
+                        quadColors[index] = walkableColor;
+                        break;
+
+                    case NodeType.OccupiedByObstacle:
+                        quadColors[index] = nonWalkableColor;
+                        break;
+
+                    case NodeType.Invalid:
+                        quadColors[index] = invalidColor;
+                        break;
+
+                    default:
+                        quadColors[index] = invalidColor;
+                        break;
+                }
+            }
+        }
+
+        /// <summary>
         /// The job that calculates the connection vertices for the nodes, so that they can be
         /// displayed with a mesh.
         /// </summary>
         [BurstCompile]
-        private struct CalculateConnectionMeshJob : IJobParallelFor
+        private struct CalculateConnectionMeshJob : IJobFor
         {
-            [ReadOnly] private readonly int numNeighbors;
-            [ReadOnly] private readonly NativeArray<NodeTransform> nodesTransforms;
-            [ReadOnly] private readonly NativeArray<NodeNeighbor> nodesNeighbors;
-            [WriteOnly, NativeDisableParallelForRestriction] public NativeArray<Vector3> vertices;
+            [WriteOnly, NativeDisableParallelForRestriction] public NativeArray<float3> vertices;
             [WriteOnly, NativeDisableParallelForRestriction] public NativeArray<int> indices;
 
-            public CalculateConnectionMeshJob(int numNeighbors, NativeArray<NodeTransform> nodesTransforms, NativeArray<NodeNeighbor> nodesNeighbors, NativeArray<Vector3> vertices, NativeArray<int> indices)
-            {
-                this.numNeighbors = numNeighbors;
-                this.nodesTransforms = nodesTransforms;
-                this.nodesNeighbors = nodesNeighbors;
-                this.vertices = vertices;
-                this.indices = indices;
-            }
+            [ReadOnly] public NativeArray<NodeTransform> nodesTransforms;
+            [ReadOnly] public NativeArray<NodeNeighbor> nodesNeighbors;
+
+            public int numNeighbors;
 
             /// <inheritdoc/>
             public void Execute(int index)
@@ -60,15 +105,15 @@ namespace AStar
 
                     if (!valid)
                     {
-                        vertices[vertexIndex] = Vector3.zero;
-                        vertices[vertexIndex + 1] = Vector3.zero;
+                        vertices[vertexIndex] = float3.zero;
+                        vertices[vertexIndex + 1] = float3.zero;
                     }
                     else
                     {
                         NodeTransform ntn = nodesTransforms[neighborIndex];
 
-                        vertices[vertexIndex] = nt.Pos + (nt.Up * NodeVisualNormalOffset);
-                        vertices[vertexIndex + 1] = Vector3.Lerp(nt.Pos + (nt.Up * NodeVisualNormalOffset), ntn.Pos + (ntn.Up * NodeVisualNormalOffset), 0.5f);
+                        vertices[vertexIndex] = nt.pos + (nt.up * NodeConnectionVisualNormalOffset);
+                        vertices[vertexIndex + 1] = math.lerp(nt.pos + (nt.up * NodeConnectionVisualNormalOffset), ntn.pos + (ntn.up * NodeConnectionVisualNormalOffset), 0.5f);
                     }
                 }
             }
@@ -78,29 +123,32 @@ namespace AStar
 
         #region Private Attributes
 
-        private const float NodeVisualDebugSize = NodeSize * 0.8f;
+        private const float NodeVisualDebugSize = GridMaster.NodeSize * 0.875f;
         private const float NodeVisualNormalOffset = 0.001f;
+        private const float NodeConnectionVisualNormalOffset = 0.002f;
 
-        [Header("Debug settings")]
-        [SerializeField] private bool showNodes = true;
-        [SerializeField] private Material nodeMaterial = null;
-        [SerializeField] private Color32 invalidNodeColor = new Color32(0, 0, 0, 192);
-        [SerializeField] private Color32 walkableNodeColor = new Color32(128, 128, 128, 128);
-        [SerializeField] private Color32 nonWalkableNodeColor = new Color32(255, 0, 0, 192);
+        [Header("Nodes")]
+        [SerializeField] private JobifiedQuadRenderer nodesRenderer = null;
+        [SerializeField] private Color32 invalidNodeColor = new Color32(0, 0, 0, 208);
+        [SerializeField] private Color32 walkableNodeColor = new Color32(128, 128, 128, 208);
+        [SerializeField] private Color32 nonWalkableNodeColor = new Color32(255, 0, 0, 208);
+        private bool showNodes;
 
-        [SerializeField] private bool showNodesConnections = true;
-        [SerializeField] private Material nodeConnectionsMaterial = null;
-
-        private Mesh nodeMesh;
-        private Batcher nodeBatcher;
-
+        [Header("Connections")]
+        [SerializeField] private Material connectionsMaterial = null;
+        private bool showConnections;
         private Mesh connectionsMesh;
-        private NativeArray<Vector3> connectionsMeshVertices;
+        private MeshRenderer connectionsMeshRenderer;
+        private NativeArray<float3> connectionsMeshVertices;
         private NativeArray<int> connectionsMeshIndices;
+
+        private GridMaster gm;
 
         #endregion
 
         #region Properties
+
+        protected override bool DestroyOnLoad { get { return true; } }
 
         public bool ShowNodes
         {
@@ -108,18 +156,49 @@ namespace AStar
             set
             {
                 showNodes = value;
-                RecalculateDebug();
+                UpdateShowDebug();
             }
         }
 
-        public bool ShowNodesConnections
+        public bool ShowConnections
         {
-            get { return showNodesConnections; }
+            get { return showConnections; }
             set
             {
-                showNodesConnections = value;
-                RecalculateDebug();
+                showConnections = value;
+                UpdateShowDebug();
             }
+        }
+
+        #endregion
+
+        #region MonoBehaviour Methods
+
+        private void Start()
+        {
+            gm = GridMaster.Instance;
+            gm.OnGridCreation += RecalculateDebug;
+
+            connectionsMesh = RenderUtils.CreateMeshForProceduralModifications("connectionsMesh", IndexFormat.UInt32);
+
+            MeshFilter filter = Utils.GetOrAddComponent<MeshFilter>(gm.transform, out bool createdFilter);
+            filter.sharedMesh = connectionsMesh;
+
+            connectionsMeshRenderer = Utils.GetOrAddComponent<MeshRenderer>(gm.transform, out bool createdRenderer);
+            connectionsMeshRenderer.sharedMaterial = connectionsMaterial;
+            connectionsMeshRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            connectionsMeshRenderer.lightProbeUsage = LightProbeUsage.Off;
+            connectionsMeshRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+        }
+
+        private void OnDestroy()
+        {
+            gm.OnGridCreation -= RecalculateDebug;
+
+            if (connectionsMesh != null)
+                Destroy(connectionsMesh);
+
+            DeallocateNativeDatastructures();
         }
 
         #endregion
@@ -127,70 +206,73 @@ namespace AStar
         #region Methods
 
         /// <summary>
-        /// Adds the nodes debugging.
+        /// Updates showing the debug according to the internal state of the object.
         /// </summary>
-        public void RecalculateDebug()
+        private void UpdateShowDebug()
         {
-            DisposeDebugNativeDatastructures();
-            int numNodes = gridDepth * gridWidth;
-
-            // prepare the job that calculates the vertices for the neighbor connection lines
-            int arrayLength = numNodes * NodeNeighbors * 2;
-            connectionsMeshVertices = new NativeArray<Vector3>(arrayLength, Allocator.Persistent);
-            connectionsMeshIndices = new NativeArray<int>(arrayLength, Allocator.Persistent);
-
-            CalculateConnectionMeshJob calcConnectionsMeshJob = new CalculateConnectionMeshJob(NodeNeighbors, nodesTransforms, nodesNeighbors, connectionsMeshVertices, connectionsMeshIndices);
-            JobHandle calcConnectionMeshHandle = calcConnectionsMeshJob.Schedule(numNodes, 8);
-
-            // do other required stuff before calling complete so we have actual parallelism
-            MeshRenderer mr = Utils.GetOrAddComponent<MeshRenderer>(transform, out bool createdRenderer);
-            mr.shadowCastingMode = ShadowCastingMode.Off;
-            mr.sharedMaterial = nodeConnectionsMaterial;
-            mr.lightProbeUsage = LightProbeUsage.Off;
-            mr.reflectionProbeUsage = ReflectionProbeUsage.Off;
-            mr.enabled = showNodesConnections;
-
-            MeshFilter filter = Utils.GetOrAddComponent<MeshFilter>(transform, out bool createdFilter);
-            filter.sharedMesh = connectionsMesh;
-
-            // the nodes themselves
-            nodeBatcher.Clear();
-
-            if (showNodes)
-            {
-                for (int i = 0; i < numNodes; i++)
-                {
-                    NodeTransform nt = nodesTransforms[i];
-                    NodeType nodeType = nodesTypes[i];
-
-                    Color32 c;
-
-                    if (nodeType == NodeType.Invalid)
-                        c = invalidNodeColor;
-                    else if (nodeType == NodeType.OccupiedByObstacle)
-                        c = nonWalkableNodeColor;
-                    else
-                        c = walkableNodeColor;
-
-                    Vector3 pos = nt.Pos + (nt.Up * NodeVisualNormalOffset);
-                    Matrix4x4 trs = Matrix4x4.TRS(pos, nt.GetRotation(), Vector3.one);
-
-                    // batch each node quad debug
-                    nodeBatcher.AddItem(c, trs);
-                }
-            }
-
-            calcConnectionMeshHandle.Complete();
-
-            // set the mesh using the results of the job
-            connectionsMesh.SetVertices(calcConnectionsMeshJob.vertices);
-            connectionsMesh.SetIndices(calcConnectionsMeshJob.indices, MeshTopology.Lines, 0);
+            connectionsMeshRenderer.enabled = showConnections;
+            nodesRenderer.Show(showNodes);
         }
 
         /// <summary>
-        /// Dispose native datastructures used by debugging.
+        /// Recalculates the grid debugging, both the connections and the nodes.
         /// </summary>
-        private void DisposeDebugNativeDatastructures()
+        private void RecalculateDebug()
+        {
+            DeallocateNativeDatastructures();
+
+            int numNodes = gm.GridDepth * gm.GridWidth;
+            int arrayLength = numNodes * GridMaster.NodeNumNeighbors * 2;
+
+            connectionsMeshVertices = new NativeArray<float3>(arrayLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            connectionsMeshIndices = new NativeArray<int>(arrayLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+
+            JobifiedQuadRenderer.QuadData quadNodesData = new JobifiedQuadRenderer.QuadData(numNodes);
+
+            JobHandle nodeQuadsDeps = new CalculateNodeQuadsDataJob
+            {
+                quadPositions = quadNodesData.quadPositions,
+                quadNormals = quadNodesData.quadNormals,
+                quadDimensions = quadNodesData.quadDimensions,
+                quadRotations = quadNodesData.quadRotations,
+                quadColors = quadNodesData.quadColors,
+                nodeTransforms = gm.NodesTransforms,
+                nodesTypes = gm.NodesTypes,
+                invalidColor = invalidNodeColor,
+                walkableColor = walkableNodeColor,
+                nonWalkableColor = nonWalkableNodeColor,
+                dimension = new float2(NodeVisualDebugSize, NodeVisualDebugSize),
+            }
+            .ScheduleParallel(numNodes, 64, default(JobHandle));
+
+            nodeQuadsDeps = nodesRenderer.ScheduleBuildMesh(quadNodesData, 64, nodeQuadsDeps);
+            JobHandle disposeNodeDeps = quadNodesData.Dispose(nodeQuadsDeps);
+
+            CalculateConnectionMeshJob calcConnectionsMeshJob = new CalculateConnectionMeshJob
+            {
+                vertices = connectionsMeshVertices,
+                indices = connectionsMeshIndices,
+                nodesTransforms = gm.NodesTransforms,
+                nodesNeighbors = gm.NodesNeighbors,
+                numNeighbors = GridMaster.NodeNumNeighbors,
+            };
+
+            JobHandle calcConnectionMeshHandle = calcConnectionsMeshJob.ScheduleParallel(numNodes, 64, default(JobHandle));
+            JobHandle.CompleteAll(ref calcConnectionMeshHandle, ref nodeQuadsDeps);
+
+            connectionsMesh.SetVertices(calcConnectionsMeshJob.vertices);
+            connectionsMesh.SetIndices(calcConnectionsMeshJob.indices, MeshTopology.Lines, 0);
+            nodesRenderer.UpdateMesh();
+
+            UpdateShowDebug();
+
+            disposeNodeDeps.Complete();
+        }
+
+        /// <summary>
+        /// Dispose native datastructures used to debug.
+        /// </summary>
+        private void DeallocateNativeDatastructures()
         {
             if (connectionsMeshVertices.IsCreated)
                 connectionsMeshVertices.Dispose();

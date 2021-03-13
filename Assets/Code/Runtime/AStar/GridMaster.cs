@@ -1,6 +1,7 @@
 ﻿using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
+using Unity.Mathematics;
 using UnityEngine;
 using UnityLibrary;
 using Logger = UnityLibrary.Logger;
@@ -12,7 +13,7 @@ namespace AStar
     /// pathfinding system. Currently it scans a "2D" area in 3D space, which means no overlapping
     /// areas are allowed.
     /// </summary>
-    public partial class GridMaster : MonoBehaviourSingleton<GridMaster>
+    public class GridMaster : MonoBehaviourSingleton<GridMaster>
     {
         #region Definitions
 
@@ -21,52 +22,27 @@ namespace AStar
         /// </summary>
         private struct ScanAreaSettings
         {
-            public readonly Vector3 center;
-            public readonly Vector3 extents;
-            public readonly Vector3 flooredExtents;
-            public readonly LayerMask mask;
             public readonly int gridWidth;
             public readonly int gridDepth;
-            public readonly int dimension;
+            public readonly int gridDimension;
+            public readonly float3 center;
+            public readonly float3 extents;
+            public readonly float3 flooredExtents;
+            public readonly LayerMask mask;
 
-            public ScanAreaSettings(Vector3 center, Vector3 extents, LayerMask mask)
+            public ScanAreaSettings(float3 center, float3 extents, LayerMask mask)
             {
                 this.center = center;
                 this.extents = extents;
+                this.mask = mask;
 
                 // TODO: Don't allow negative extents when editing the collider
-                float restX = extents.x % NodeSize;
-                float restY = extents.y % NodeSize;
-                float restZ = extents.z % NodeSize;
+                float3 rest = extents % NodeSize;
+                flooredExtents = extents - rest;
 
-                float flooredX = extents.x - restX;
-                float flooredY = extents.y - restY;
-                float flooredZ = extents.z - restZ;
-
-                flooredExtents = new Vector3(flooredX, flooredY, flooredZ);
-
-                this.mask = mask;
-
-                gridWidth = Mathf.FloorToInt(flooredExtents.x / NodeSize) * 2;
-                gridDepth = Mathf.FloorToInt(flooredExtents.z / NodeSize) * 2;
-                dimension = gridWidth * gridDepth;
-            }
-        }
-
-        /// <summary>
-        /// The settings required by the job that bakes the obstacles using boxcasts.
-        /// </summary>
-        private struct BakeObstaclesSettings
-        {
-            public readonly float maxCharacterHeight;
-            public readonly float boxNodePercentage;
-            public readonly LayerMask mask;
-
-            public BakeObstaclesSettings(float maxCharacterHeight, float boxNodePercentage, LayerMask mask)
-            {
-                this.maxCharacterHeight = maxCharacterHeight;
-                this.boxNodePercentage = boxNodePercentage;
-                this.mask = mask;
+                gridWidth = (int)(flooredExtents.x / NodeSize) * 2;
+                gridDepth = (int)(flooredExtents.z / NodeSize) * 2;
+                gridDimension = gridWidth * gridDepth;
             }
         }
 
@@ -78,29 +54,42 @@ namespace AStar
         /// Custom job to parallelize the calculation of launch points and directions for raycasts.
         /// </summary>
         [BurstCompile]
-        private struct CalculateRaycastCommandsJob : IJobParallelFor
+        private struct CalculateRaycastCommandsJob : IJobFor
         {
-            [WriteOnly] public NativeArray<RaycastCommand> commands;
-            [ReadOnly] private readonly ScanAreaSettings settings;
-
-            public CalculateRaycastCommandsJob(ScanAreaSettings settings)
-            {
-                commands = new NativeArray<RaycastCommand>(settings.gridWidth * settings.gridDepth, Allocator.TempJob);
-                this.settings = settings;
-            }
+            [WriteOnly, NativeDisableParallelForRestriction] public NativeArray<RaycastCommand> commands;
+            public ScanAreaSettings scanSettings;
 
             /// <inheritdoc/>
             public void Execute(int index)
             {
-                int row = index / settings.gridWidth;
-                int col = index % settings.gridWidth;
+                // Note: I may not need this if all non primitive colliders are convex. We launch
+                // five raycasts per node so that we are able to handle realistic stairs. The rays
+                // are set in the following order: middle point, upper right, lower right, lower
+                // left, upper left (that is clockwise and in world space)
+                int row = index / scanSettings.gridWidth;
+                int col = index % scanSettings.gridWidth;
 
-                float x = settings.center.x - settings.flooredExtents.x + (col * NodeSize) + NodeHalfSize;
-                float y = settings.center.y + settings.extents.y;
-                float z = settings.center.z - settings.flooredExtents.z + (row * NodeSize) + NodeHalfSize;
+                float midX = scanSettings.center.x - scanSettings.flooredExtents.x + (col * NodeSize) + NodeHalfSize;
+                float midZ = scanSettings.center.z - scanSettings.flooredExtents.z + (row * NodeSize) + NodeHalfSize;
+                float y = scanSettings.center.y + scanSettings.extents.y;
 
-                Vector3 startRayPos = new Vector3(x, y, z);
-                commands[index] = new RaycastCommand(startRayPos, Vector3.down, settings.extents.y * 2.0f, settings.mask, 1);
+                float3 midRayStartPos = new float3(midX, y, midZ);
+                float3 toUpperRightOffset = (math.forward() + math.right()) * (NodeHalfSize - 0.05f);
+                float3 toLowerRightOffset = (math.back() + math.right()) * (NodeHalfSize - 0.05f);
+
+                float3 upperRight = midRayStartPos + toUpperRightOffset;
+                float3 lowerRight = midRayStartPos + toLowerRightOffset;
+                float3 lowerLeft = midRayStartPos - toUpperRightOffset;
+                float3 upperLeft = midRayStartPos - toLowerRightOffset;
+
+                float rayDist = scanSettings.extents.y * 2.0f;
+                Vector3 down = Vector3.down;
+
+                commands[index * 5] = new RaycastCommand((Vector3)midRayStartPos, down, rayDist, scanSettings.mask, 1);
+                commands[index * 5 + 1] = new RaycastCommand((Vector3)upperRight, down, rayDist, scanSettings.mask, 1);
+                commands[index * 5 + 2] = new RaycastCommand((Vector3)lowerRight, down, rayDist, scanSettings.mask, 1);
+                commands[index * 5 + 3] = new RaycastCommand((Vector3)lowerLeft, down, rayDist, scanSettings.mask, 1);
+                commands[index * 5 + 4] = new RaycastCommand((Vector3)upperLeft, down, rayDist, scanSettings.mask, 1);
             }
         }
 
@@ -109,54 +98,114 @@ namespace AStar
         /// original XZ position of the ray launched.
         /// </summary>
         [BurstCompile]
-        private struct CreateNodesJob : IJobParallelFor
+        private struct CreateNodesJob : IJobFor
         {
-            [WriteOnly] private NativeArray<NodeTransform> nodesTransforms;
-            [WriteOnly] private NativeArray<NodeType> nodesTypes;
-            [ReadOnly] private readonly NativeArray<RaycastHit> hits;
-            [ReadOnly] private readonly NativeArray<RaycastCommand> commands;
+            [WriteOnly] public NativeArray<NodeTransform> nodesTransforms;
+            [WriteOnly] public NativeArray<NodeType> nodesTypes;
 
-            public CreateNodesJob(NativeArray<NodeTransform> nodesTransforms, NativeArray<NodeType> nodesTypes, NativeArray<RaycastHit> hits, NativeArray<RaycastCommand> commands)
-            {
-                this.nodesTransforms = nodesTransforms;
-                this.nodesTypes = nodesTypes;
-                this.hits = hits;
-                this.commands = commands;
-            }
+            [ReadOnly] public NativeArray<RaycastHit> hits;
+            [ReadOnly] public NativeArray<RaycastCommand> commands;
 
             /// <inheritdoc/>
             public void Execute(int index)
             {
-                RaycastHit hit = hits[index];
-                RaycastCommand command = commands[index];
+                RaycastHit midHit = hits[index * 5];
+                RaycastCommand midCommand = commands[index * 5];
 
-                // Note: we can't check for collider to be null since reference types are not allowed
-                bool validNode = hit.normal != default(Vector3);
+                // we can't check for collider to be null since reference types are not allowed
+                bool validNode = midHit.normal != default(Vector3);
 
-                Vector3 pos = validNode ? hit.point : new Vector3(command.from.x, 0.0f, command.from.z);
-                Vector3 normal = validNode ? hit.normal : Vector3.up;
+                float3 pos;
+                float3 normal;
+
+                if (validNode)
+                {
+                    bool isStair = IsValidIndexNodeStair(index, out float3 fakeStairNormal);
+
+                    normal = math.select((float3)midHit.normal, fakeStairNormal, isStair);
+                    pos = (float3)midHit.point;
+                }
+                else
+                {
+                    pos = new float3(midCommand.from.x, 0.0f, midCommand.from.z);
+                    normal = math.up();
+                }
 
                 nodesTransforms[index] = new NodeTransform(pos, normal);
                 nodesTypes[index] = !validNode ? NodeType.Invalid : NodeType.Free;
             }
+
+            /// <summary>
+            /// Get whether the valid node index is considered as a stair, and if so return the
+            /// computed "fake" normal, which would belong to the ramp formed by joining the four
+            /// corners of the node.
+            /// </summary>
+            /// <param name="index"></param>
+            /// <param name="computedFakeNormal"></param>
+            /// <returns></returns>
+            private bool IsValidIndexNodeStair(int index, out float3 computedFakeNormal)
+            {
+                float3 mid = (float3)hits[index * 5].point;
+                float3 upperRight = (float3)hits[index * 5 + 1].point;
+                float3 lowerRight = (float3)hits[index * 5 + 2].point;
+                float3 lowerLeft = (float3)hits[index * 5 + 3].point;
+                float3 upperLeft = (float3)hits[index * 5 + 4].point;
+
+                bool isStair = true;
+                computedFakeNormal = float3.zero;
+
+                for (int i = index * 5; i <= index * 5 + 4; i++)
+                {
+                    RaycastHit hit = hits[i];
+
+                    float dot = math.abs(math.dot((float3)hit.normal, math.up()));
+                    float heightDist = math.abs(mid.y - hit.point.y);
+
+                    if (dot <= (1.0f - MinDotErrorToConsiderRamp) || heightDist < MinHeightDistToConsiderStepInSameNode && (i != index * 5))
+                    {
+                        isStair = false;
+                        break;
+                    }
+                }
+
+                if (isStair)
+                {
+                    float3 upperLeftToUpperRight = math.normalize(upperRight - upperLeft);
+                    float3 lowerLeftToLowerRight = math.normalize(lowerRight - lowerLeft);
+
+                    // this is not really necessary but in the case of minimal errors with the
+                    // geometry it may smooth the result
+                    float3 leftToRight = math.normalize(upperLeftToUpperRight + lowerLeftToLowerRight);
+
+                    float3 lowerLeftToUpperLeft = math.normalize(upperLeft - lowerLeft);
+                    float3 lowerRightToUpperRight = math.normalize(upperRight - lowerRight);
+
+                    // same as before, not strictly required
+                    float3 lowerToUpper = math.normalize(lowerLeftToUpperLeft + lowerRightToUpperRight);
+
+                    computedFakeNormal = math.normalize(math.cross(lowerToUpper, leftToRight));
+                }
+
+                return isStair;
+            }
         }
 
+        #endregion
+
+        #region Bake Obstacles Jobs
+
         /// <summary>
-        /// The job to prepare the bake of the obstacles into the nodes.
+        /// The job to prepare the boxcasting commands to launch them to recognize obstacles in the grid.
         /// </summary>
         [BurstCompile]
-        private struct CalculateBoxcastCommandsJob : IJobParallelFor
+        private struct CalculateBoxcastCommandsJob : IJobFor
         {
             [WriteOnly] public NativeArray<BoxcastCommand> commands;
-            [ReadOnly] private readonly BakeObstaclesSettings settings;
-            [ReadOnly] private readonly NativeArray<NodeTransform> nodesTransforms;
+            [ReadOnly] public NativeArray<NodeTransform> nodesTransforms;
 
-            public CalculateBoxcastCommandsJob(BakeObstaclesSettings settings, NativeArray<NodeTransform> nodesTransforms)
-            {
-                this.commands = new NativeArray<BoxcastCommand>(nodesTransforms.Length, Allocator.TempJob);
-                this.settings = settings;
-                this.nodesTransforms = nodesTransforms;
-            }
+            public LayerMask mask;
+            public float boxNodePercentage;
+            public float maxCharacterHeight;
 
             /// <inheritdoc/>
             public void Execute(int index)
@@ -164,14 +213,14 @@ namespace AStar
                 NodeTransform nt = nodesTransforms[index];
 
                 // start a bit before the node just in case there's an obstacle overlapping a bit
-                Vector3 center = nt.Pos - nt.Up * 0.1f;
+                Vector3 center = (Vector3)(nt.pos - nt.up * 0.1f);
 
                 // nodes are squares and we don't plan to change it
-                float halfWidth = NodeHalfSize * settings.boxNodePercentage;
+                float halfWidth = NodeHalfSize * boxNodePercentage;
                 float halfDepth = halfWidth;
                 Vector3 halfExtents = new Vector3(halfWidth, 0.01f, halfDepth);
 
-                commands[index] = new BoxcastCommand(center, halfExtents, nt.GetRotation(), nt.Up, settings.maxCharacterHeight, settings.mask);
+                commands[index] = new BoxcastCommand(center, halfExtents, (Quaternion)nt.GetRotation(), (Vector3)nt.up, maxCharacterHeight, mask);
             }
         }
 
@@ -180,16 +229,10 @@ namespace AStar
         /// depending on the result.
         /// </summary>
         [BurstCompile]
-        private struct BakeObstaclesJob : IJobParallelFor
+        private struct BakeObstaclesJob : IJobFor
         {
-            private NativeArray<NodeType> nodesTypes;
-            [ReadOnly] private readonly NativeArray<RaycastHit> boxcastHits;
-
-            public BakeObstaclesJob(NativeArray<NodeType> nodesTypes, NativeArray<RaycastHit> boxcastHits)
-            {
-                this.nodesTypes = nodesTypes;
-                this.boxcastHits = boxcastHits;
-            }
+            public NativeArray<NodeType> nodesTypes;
+            [ReadOnly] public NativeArray<RaycastHit> boxcastHits;
 
             /// <inheritdoc/>
             public void Execute(int index)
@@ -213,27 +256,19 @@ namespace AStar
         /// The job that calculates the neighbors for each node.
         /// </summary>
         [BurstCompile]
-        private struct CalculateNeighborsJob : IJobParallelFor
+        private struct CalculateNeighborsJob : IJobFor
         {
-            [WriteOnly, NativeDisableParallelForRestriction] private NativeArray<NodeNeighbor> neighbors;
-            [ReadOnly] private readonly NativeArray<NodeTransform> nodesTransforms;
-            [ReadOnly] private readonly ScanAreaSettings scanSettings;
-            [ReadOnly] private readonly float maxWalkableStep;
+            [WriteOnly, NativeDisableParallelForRestriction] public NativeArray<NodeNeighbor> neighbors;
 
-            public CalculateNeighborsJob(NativeArray<NodeNeighbor> neighbors, NativeArray<NodeTransform> nodesTransforms, ScanAreaSettings scanSettings, float maxWalkableStep)
-            {
-                this.neighbors = neighbors;
-                this.nodesTransforms = nodesTransforms;
-                this.scanSettings = scanSettings;
-                this.maxWalkableStep = maxWalkableStep;
-            }
+            [ReadOnly] public NativeArray<NodeTransform> nodesTransforms;
+
+            public ScanAreaSettings scanSettings;
+            public float maxWalkableHeightWithStep;
 
             /// <inheritdoc/>
             public void Execute(int index)
             {
-                int numNeighbors = NodeNeighbors;
-
-                NativeArray<int> neighborIndices = new NativeArray<int>(numNeighbors, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+                FixedListInt32 neighborIndices = new FixedListInt32();
                 int nodeRow = index / scanSettings.gridWidth;
 
                 int topIndex = index + scanSettings.gridWidth;
@@ -241,11 +276,13 @@ namespace AStar
                 int botIndex = index - scanSettings.gridWidth;
                 int leftIndex = (index - 1) / scanSettings.gridWidth != nodeRow ? -1 : index - 1;
 
-                // Note: the order is important, its used by some of the PathFinder algorithms
-                neighborIndices[0] = topIndex;
-                neighborIndices[1] = rightIndex;
-                neighborIndices[2] = botIndex;
-                neighborIndices[3] = leftIndex;
+                // the order is important, its used by some of the pathfinder algorithms
+                neighborIndices.AddNoResize(topIndex);
+                neighborIndices.AddNoResize(rightIndex);
+                neighborIndices.AddNoResize(botIndex);
+                neighborIndices.AddNoResize(leftIndex);
+
+                int numNeighbors = NodeNumNeighbors;
 
                 for (int i = 0; i < numNeighbors; i++)
                 {
@@ -262,8 +299,6 @@ namespace AStar
                     bool canReachNeighbor = CanReachNeighbor(index, neighborIndex);
                     neighbors[neighborsArrayIndex] = new NodeNeighbor(neighborIndex, canReachNeighbor);
                 }
-
-                neighborIndices.Dispose();
             }
 
             /// <summary>
@@ -287,13 +322,13 @@ namespace AStar
                 bool sameCol = (index + scanSettings.gridWidth == neighborIndex) || (index - scanSettings.gridWidth == neighborIndex);
 
                 const float dotThreshold = 0.99625f; // anything over is aprox 5 degrees or less in "angle distance"
-                float dotRightsAbs = Mathf.Abs(Vector3.Dot(nt.Right, ntn.Right));
-                float dotFwdsAbs = Mathf.Abs(Vector3.Dot(nt.Fwd, ntn.Fwd));
+                float dotRightsAbs = math.abs(math.dot(nt.right, ntn.right));
+                float dotFwdsAbs = math.abs(math.dot(nt.fwd, ntn.fwd));
 
                 if ((sameCol && dotRightsAbs >= dotThreshold) || (sameRow && dotFwdsAbs >= dotThreshold))
                 {
                     // the node can be reached if the distance in height meets the requirements
-                    canReachNeighbor = Maths.Dist(nt.Pos.y, ntn.Pos.y) <= maxWalkableStep;
+                    canReachNeighbor = math.distance(nt.pos.y, ntn.pos.y) <= maxWalkableHeightWithStep;
                 }
 
                 return canReachNeighbor;
@@ -302,22 +337,33 @@ namespace AStar
 
         #endregion
 
+        #region Events
+
+        public delegate void OnGridCreationDelegate();
+        public event OnGridCreationDelegate OnGridCreation;
+
+        #endregion
+
         #region Public Attributes
 
         public const float NodeSize = 1.0f;
         public const float NodeHalfSize = NodeSize * 0.5f;
-        public const int NodeNeighbors = (int)NeighborLayout.Four;
+        public const int NodeNumNeighbors = (int)NeighborLayout.Four;
 
         #endregion
 
         #region Private Attributes
 
+        private const float MinDotErrorToConsiderRamp = 0.01f;
+        private const float MinHeightDistToConsiderStepInSameNode = 0.01f;
+
         [Header("Construction settings")]
         [SerializeField] private LayerMask walkableMask = default;
         [SerializeField] private LayerMask obstacleMask = default;
+
         [SerializeField, Range(0.0f, 5.0f)] private float maxCharacterHeight = 2.0f;
-        [SerializeField, Range(0.1f, 1.0f)] private float boxToNodeObstaclePercentage = 0.95f;
-        [SerializeField, Range(0.0f, 1.0f)] private float maxWalkableStep = 0.25f;
+        [SerializeField, Range(0.0f, 1.0f)] private float boxToNodeObstaclePercentage = 0.90f;
+        [SerializeField, Range(0.0f, 1.0f)] private float maxWalkableHeightWithStep = 0.25f;
 
         private BoxCollider scanCollider;
         private bool isGridCreated;
@@ -337,10 +383,11 @@ namespace AStar
         public bool IsGridCreated { get { return isGridCreated; } }
         public int GridWidth { get { return gridWidth; } }
         public int GridDepth { get { return gridDepth; } }
+        public int Dimension { get { return gridWidth * gridDepth; } }
+        public Bounds Bounds { get { return scanCollider.bounds; } }
         public NativeArray<NodeTransform> NodesTransforms { get { return nodesTransforms; } }
         public NativeArray<NodeType> NodesTypes { get { return nodesTypes; } }
         public NativeArray<NodeNeighbor> NodesNeighbors { get { return nodesNeighbors; } }
-        public Bounds Bounds { get { return scanCollider.bounds; } }
 
         #endregion
 
@@ -350,32 +397,11 @@ namespace AStar
         {
             base.Awake();
             scanCollider = GetComponent<BoxCollider>();
-
-#if DEBUG_RENDER
-            Quaternion rot = Quaternion.LookRotation(Vector3.forward, Vector3.up);
-            nodeMesh = RenderUtils.CreateQuadMesh(NodeVisualDebugSize, NodeVisualDebugSize, rot);
-            nodeBatcher = new Batcher(nodeMesh, nodeMaterial);
-            connectionsMesh = RenderUtils.CreateMeshForProceduralModifications("connectionsMesh", UnityEngine.Rendering.IndexFormat.UInt32);
-#endif
-            CreateGrid();
         }
-
-#if DEBUG_RENDER
-
-        private void Update()
-        {
-            nodeBatcher.DoRender();
-        }
-
-#endif
 
         private void OnDestroy()
         {
             DestroyGrid();
-
-#if DEBUG_RENDER
-            DisposeDebugNativeDatastructures();
-#endif
         }
 
         #endregion
@@ -389,85 +415,125 @@ namespace AStar
         {
             DestroyGrid();
 
-            // Note: perhaps we might want to snap the extents value when editing the bounding box
+            // TODO: Perhaps we might want to snap the extents value when editing the bounding box
             // in the editor?
             Bounds scanBounds = scanCollider.bounds;
-            ScanAreaSettings scanSettings = new ScanAreaSettings(scanBounds.center, scanBounds.extents, walkableMask);
-            int gridDimension = scanSettings.dimension;
+            ScanAreaSettings scanSettings = new ScanAreaSettings((float3)scanBounds.center, (float3)scanBounds.extents, walkableMask);
+            int expectedGridDimension = scanSettings.gridDimension;
 
-            nodesTransforms = new NativeArray<NodeTransform>(gridDimension, Allocator.Persistent);
-            nodesTypes = new NativeArray<NodeType>(gridDimension, Allocator.Persistent);
-            nodesNeighbors = new NativeArray<NodeNeighbor>(gridDimension * NodeNeighbors, Allocator.Persistent);
+            // TODO: Could I use nodesTypes invalid to avoid any kind of computation from them?
+            // TODO: Could I actually initialize it without clearing memory?
+            nodesTransforms = new NativeArray<NodeTransform>(expectedGridDimension, Allocator.Persistent);
+            nodesTypes = new NativeArray<NodeType>(expectedGridDimension, Allocator.Persistent);
+            nodesNeighbors = new NativeArray<NodeNeighbor>(expectedGridDimension * NodeNumNeighbors, Allocator.Persistent);
 
-            // calculate the raycast commands
-            CalculateRaycastCommandsJob calculateCommandsJob = new CalculateRaycastCommandsJob(scanSettings);
-            JobHandle calculateCommandsHandle = calculateCommandsJob.Schedule(gridDimension, 32);
+            // calculate the initial raycast commands
+            NativeArray<RaycastCommand> mainCommands = new NativeArray<RaycastCommand>(expectedGridDimension * 5, Allocator.TempJob);
 
-            // schedule the raycast commands to retrieve the hits
-            NativeArray<RaycastHit> nodeHits = new NativeArray<RaycastHit>(gridDimension, Allocator.TempJob);
-            JobHandle raycastCommandHandle = RaycastCommand.ScheduleBatch(calculateCommandsJob.commands, nodeHits, 1, calculateCommandsHandle);
+            JobHandle createNodesHandle = new CalculateRaycastCommandsJob
+            {
+                commands = mainCommands,
+                scanSettings = scanSettings,
+            }
+            .ScheduleParallel(expectedGridDimension, 64, default(JobHandle));
 
-            // build the nodes using the received hits
-            CreateNodesJob createNodesJob = new CreateNodesJob(nodesTransforms, nodesTypes, nodeHits, calculateCommandsJob.commands);
-            JobHandle createNodesHandle = createNodesJob.Schedule(gridDimension, 32, raycastCommandHandle);
+            // schedule the commands to retrieve the initial hits
+            NativeArray<RaycastHit> nodeHits = new NativeArray<RaycastHit>(expectedGridDimension * 5, Allocator.TempJob);
+            createNodesHandle = RaycastCommand.ScheduleBatch(mainCommands, nodeHits, 32, createNodesHandle);
 
-            // calculate the boxcast commands to bake obstacles
-            BakeObstaclesSettings bakeObstaclesSettings = new BakeObstaclesSettings(maxCharacterHeight, boxToNodeObstaclePercentage, obstacleMask);
-            CalculateBoxcastCommandsJob calculateBoxcastCommandsJob = new CalculateBoxcastCommandsJob(bakeObstaclesSettings, nodesTransforms);
-            JobHandle calculateBoxcastHandle = calculateBoxcastCommandsJob.Schedule(gridDimension, 32, createNodesHandle);
+            // build the nodes using the received hits and the main raycast commands
+            createNodesHandle = new CreateNodesJob
+            {
+                nodesTransforms = nodesTransforms,
+                nodesTypes = nodesTypes,
+                hits = nodeHits,
+                commands = mainCommands,
+            }
+            .ScheduleParallel(expectedGridDimension, 32, createNodesHandle);
 
-            // schedule the boxcast commands to retrieve the hits
-            NativeArray<RaycastHit> obstacleHits = new NativeArray<RaycastHit>(gridDimension, Allocator.TempJob);
-            JobHandle boxcastCommandHandle = BoxcastCommand.ScheduleBatch(calculateBoxcastCommandsJob.commands, obstacleHits, 1, calculateBoxcastHandle);
+            // calculate the boxcasts to bake obstacles
+            NativeArray<BoxcastCommand> boxcastCommands = new NativeArray<BoxcastCommand>(expectedGridDimension, Allocator.TempJob);
+
+            JobHandle bakeObstaclesHandle = new CalculateBoxcastCommandsJob
+            {
+                commands = boxcastCommands,
+                nodesTransforms = nodesTransforms,
+                mask = obstacleMask,
+                boxNodePercentage = boxToNodeObstaclePercentage,
+                maxCharacterHeight = maxCharacterHeight,
+            }
+            .ScheduleParallel(expectedGridDimension, 64, createNodesHandle);
+
+            // schedule the boxcasts to find possible obstacles
+            NativeArray<RaycastHit> obstacleHits = new NativeArray<RaycastHit>(expectedGridDimension, Allocator.TempJob);
+            bakeObstaclesHandle = BoxcastCommand.ScheduleBatch(boxcastCommands, obstacleHits, 32, bakeObstaclesHandle);
 
             // prepare the bake obstacles job
-            BakeObstaclesJob bakeObstaclesJob = new BakeObstaclesJob(nodesTypes, obstacleHits);
-            JobHandle bakeObstaclesHandle = bakeObstaclesJob.Schedule(gridDimension, 32, boxcastCommandHandle);
+            bakeObstaclesHandle = new BakeObstaclesJob
+            {
+                nodesTypes = nodesTypes,
+                boxcastHits = obstacleHits,
+            }
+            .ScheduleParallel(expectedGridDimension, 128, bakeObstaclesHandle);
 
             // now calculate the neighbors
-            CalculateNeighborsJob calculateNeighborsJob = new CalculateNeighborsJob(nodesNeighbors, nodesTransforms, scanSettings, maxWalkableStep);
-            JobHandle calculateNeighborsHandle = calculateNeighborsJob.Schedule(gridDimension, 32, bakeObstaclesHandle);
+            JobHandle calculateNeighborsHandle = new CalculateNeighborsJob
+            {
+                neighbors = nodesNeighbors,
+                nodesTransforms = nodesTransforms,
+                scanSettings = scanSettings,
+                maxWalkableHeightWithStep = maxWalkableHeightWithStep,
+            }
+            .ScheduleParallel(expectedGridDimension, 32, createNodesHandle);
 
-            // schedule disposing the stuff
-            JobHandle disposeHandle = calculateCommandsJob.commands.Dispose(createNodesHandle);
-            disposeHandle = JobHandle.CombineDependencies(disposeHandle, nodeHits.Dispose(createNodesHandle));
-            disposeHandle = JobHandle.CombineDependencies(disposeHandle, calculateBoxcastCommandsJob.commands.Dispose(boxcastCommandHandle));
-            disposeHandle = JobHandle.CombineDependencies(disposeHandle, obstacleHits.Dispose(bakeObstaclesHandle));
+            JobHandle finalHandle = JobHandle.CombineDependencies(calculateNeighborsHandle, bakeObstaclesHandle);
+
+            JobHandle disposeHandle = JobHandle.CombineDependencies(mainCommands.Dispose(finalHandle), nodeHits.Dispose(finalHandle));
+            disposeHandle = JobHandle.CombineDependencies(disposeHandle, boxcastCommands.Dispose(finalHandle), obstacleHits.Dispose(finalHandle));
 
             // wait to complete all the scheduled stuff
-            calculateNeighborsHandle.Complete();
+            finalHandle.Complete();
 
             gridWidth = scanSettings.gridWidth;
             gridDepth = scanSettings.gridDepth;
             isGridCreated = true;
 
-            Logger.LogFormat("Grid created with height {0} and width {1}.", gridDepth, gridWidth);
+            OnGridCreation?.Invoke();
 
-#if DEBUG_RENDER
-            RecalculateDebug();
-#endif
+            Logger.LogFormat("Grid was created with dimension {0}. Width: {1}. Height: {2}.", expectedGridDimension, gridWidth, gridDepth);
+
+            disposeHandle.Complete();
         }
 
-        /// <summary>
-        /// Destroys the grid.
-        /// </summary>
-        public void DestroyGrid()
+        private void DestroyGrid()
         {
-            isGridCreated = false;
-            gridWidth = 0;
-            gridDepth = 0;
-
-            if (nodesTransforms.IsCreated)
-                nodesTransforms.Dispose();
-            if (nodesTypes.IsCreated)
-                nodesTypes.Dispose();
-            if (nodesNeighbors.IsCreated)
-                nodesNeighbors.Dispose();
+            if (isGridCreated)
+            {
+                isGridCreated = false;
+                gridWidth = 0;
+                gridDepth = 0;
+                if (nodesTransforms.IsCreated)
+                    nodesTransforms.Dispose();
+                if (nodesTypes.IsCreated)
+                    nodesTypes.Dispose();
+                if (nodesNeighbors.IsCreated)
+                    nodesNeighbors.Dispose();
+            }
         }
 
         #endregion
 
         #region Methods
+
+        /// <summary>
+        /// Returns the closest point to the given position that is within the bounding box.
+        /// </summary>
+        /// <param name="pos"></param>
+        /// <returns></returns>
+        public Vector3 ClampPosToNodesBoundingBox(Vector3 pos)
+        {
+            return scanCollider.bounds.ClosestPoint(pos);
+        }
 
         /// <summary>
         /// Converts a world position to a node index. Returns -1 if the position is not within the grid.
@@ -483,14 +549,12 @@ namespace AStar
 
             // TODO: Don't allow negative extents when editing the collider
             float restX = extents.x % NodeSize;
-            float restY = extents.y % NodeSize;
             float restZ = extents.z % NodeSize;
 
             float flooredX = extents.x - restX;
-            float flooredY = extents.y - restY;
             float flooredZ = extents.z - restZ;
 
-            Vector3 flooredExtents = new Vector3(flooredX, flooredY, flooredZ);
+            Vector3 flooredExtents = new Vector3(flooredX, 0.0f, flooredZ);
 
             if (!isGridCreated ||
                 localPos.x < -flooredExtents.x || localPos.x > flooredExtents.x ||
@@ -504,6 +568,69 @@ namespace AStar
             int col = Mathf.FloorToInt(localPos.x / NodeSize);
 
             return row * gridWidth + col;
+        }
+
+        /// <summary>
+        /// Get the transform of the node corresponding to a position.
+        /// </summary>
+        /// <param name="pos"></param>
+        /// <returns></returns>
+        public NodeTransform PosToNode(Vector3 pos)
+        {
+            int index = PosToNodeIndex(pos);
+
+            if (index < 0)
+            {
+                Logger.LogWarning("Trying to convert a position to a node, but it is not possible because there is not a node that corresponds to the given position. Returning default value for the node.");
+                return default(NodeTransform);
+            }
+
+            return nodesTransforms[index];
+        }
+
+        /// <summary>
+        /// Gets the node transform associated to a node index.
+        /// </summary>
+        /// <param name="nodeIndex"></param>
+        /// <returns></returns>
+        public NodeTransform GetNodeTransform(int nodeIndex)
+        {
+            if (NodeIndexOutOfBounds(nodeIndex))
+            {
+                Logger.LogWarningFormat("Trying to get a node transform from invalid node index {0}", nodeIndex.ToString());
+                return default(NodeTransform);
+            }
+
+            return nodesTransforms[nodeIndex];
+        }
+
+        /// <summary>
+        /// Gets how is the given node index occupied state.
+        /// </summary>
+        /// <param name="nodeIndex"></param>
+        /// <returns></returns>
+        public NodeType GetNodeOccupation(int nodeIndex)
+        {
+            if (NodeIndexOutOfBounds(nodeIndex))
+            {
+                Logger.LogWarningFormat("Trying to get node occupation from invalid node index {0}", nodeIndex.ToString());
+                return NodeType.Invalid;
+            }
+
+            return nodesTypes[nodeIndex];
+        }
+
+        /// <summary>
+        /// Sets the node occupation at the given pos. It can also be freed from any character that
+        /// may be occupying it.
+        /// </summary>
+        /// <param name="pos"></param>
+        /// <param name="occupiedReason"></param>
+        public void SetNodeOccupation(Vector3 pos, NodeType occupiedReason)
+        {
+            int index = PosToNodeIndex(pos);
+
+            SetNodeOccupation(index, occupiedReason);
         }
 
         /// <summary>
