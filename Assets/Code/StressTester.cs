@@ -16,24 +16,25 @@ using Random = Unity.Mathematics.Random;
 /// Class to make a quick stress test of the jobified pathfinding.
 /// </summary>
 [DefaultExecutionOrder(1)] // < Make sure the AStar system is initialized so we can safely do stuff on start, like building the grid.
-public class AgentManager : MonoBehaviour
+public class StressTester : MonoBehaviour
 {
     #region Jobs
 
     [BurstCompile]
     private struct CalculateStartEndPosJob : IJobParallelForTransform
     {
-        [ReadOnly] public Vector3 gridBoundsCenter;
-        [ReadOnly] public Vector3 gridBoundsExtents;
-        [ReadOnly] public bool isGridCreated;
-        [ReadOnly] public float nodeSize;
-        [ReadOnly] public int gridWidth;
-
-        [ReadOnly] public Random rand;
-        [ReadOnly] public NativeArray<Vector3> endPositionsToChooseFrom;
-
         [WriteOnly] public NativeArray<int> startPositionsIndices;
         [WriteOnly] public NativeArray<int> endPositionsIndices;
+
+        [ReadOnly] public NativeArray<Vector3> endPositionsToChooseFrom;
+
+        public Vector3 gridBoundsCenter;
+        public Vector3 gridBoundsExtents;
+        public bool isGridCreated;
+        public int gridWidth;
+        public float nodeSize;
+
+        public Random rand;
 
         public void Execute(int index, TransformAccess transform)
         {
@@ -44,7 +45,7 @@ public class AgentManager : MonoBehaviour
             endPositionsIndices[index] = PosToNodeIndex(endPos);
         }
 
-        public int PosToNodeIndex(Vector3 pos)
+        private int PosToNodeIndex(Vector3 pos)
         {
             int index = -1;
 
@@ -76,9 +77,7 @@ public class AgentManager : MonoBehaviour
     [BurstCompile]
     private struct FindPathJobParallel : IJobParallelFor
     {
-        [ReadOnly] public int numNodes;
-        [ReadOnly] public int gridWidth;
-        [ReadOnly] public int numNeighbors;
+        [WriteOnly] public NativeArray<int> nextNodesIndices;
 
         [ReadOnly] public NativeArray<int> startNodesIndices;
         [ReadOnly] public NativeArray<int> endNodeIndices;
@@ -86,7 +85,9 @@ public class AgentManager : MonoBehaviour
         [ReadOnly] public NativeArray<NodeNeighbor> nodesNeighbors;
         [ReadOnly] public NativeArray<NodeType> nodesTypes;
 
-        [WriteOnly] public NativeArray<int> nextNodesIndices;
+        public int numNodes;
+        public int gridWidth;
+        public int numNeighbors;
 
         public void Execute(int index)
         {
@@ -235,8 +236,9 @@ public class AgentManager : MonoBehaviour
     {
         [ReadOnly] public NativeArray<int> nodeIndicesDestinations;
         [ReadOnly] public NativeArray<NodeTransform> nodes;
-        [ReadOnly] public float speed;
-        [ReadOnly] public float dt;
+
+        public float speed;
+        public float dt;
 
         public void Execute(int index, TransformAccess transform)
         {
@@ -252,7 +254,7 @@ public class AgentManager : MonoBehaviour
 
     #endregion
 
-    #region Attributes
+    #region Private Attributes
 
     [Header("Agents")]
     [SerializeField] private GameObject agentPrefab = null;
@@ -290,52 +292,64 @@ public class AgentManager : MonoBehaviour
         float dt = Time.deltaTime;
         GridMaster gm = GridMaster.Instance;
 
-        CalculateStartEndPosJob calcStartEndJob = new CalculateStartEndPosJob()
+        NativeArray<int> startPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+        NativeArray<int> endPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+
+        Debug.Log("temp allocator " + UnityEngine.Profiling.Profiler.GetTempAllocatorSize());
+
+        JobHandle deps = new CalculateStartEndPosJob()
         {
+            startPositionsIndices = startPositionsIndices,
+            endPositionsIndices = endPositionsIndices,
+            endPositionsToChooseFrom = endPositionsToChooseFrom,
             gridBoundsCenter = gm.Bounds.center,
             gridBoundsExtents = gm.Bounds.extents,
-            nodeSize = GridMaster.NodeSize,
             isGridCreated = gm.IsGridCreated,
             gridWidth = gm.GridWidth,
+            nodeSize = GridMaster.NodeSize,
             rand = new Random(0x6E624EB7u),
-            endPositionsToChooseFrom = endPositionsToChooseFrom,
-            startPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory),
-            endPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory),
-        };
+        }
+        .Schedule(agentsTransAcc);
 
-        JobHandle calcStartEndHandle = calcStartEndJob.Schedule(agentsTransAcc);
+        //NativeArray<JobHandle> pathHandles = new NativeArray<JobHandle>(quantity, Allocator.TempJob);
 
-        FindPathJobParallel findPathsJob = new FindPathJobParallel()
+        NativeArray<int> nextNodesIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+        //JobHandle beforePathDeps = deps;
+
+        //for (int i = 0; i < quantity; i++)
+        //{
+        //    JobHandle newHandle = Pathfinder.ScheduleFindPath(startPositionsIndices, endPositionsIndices, nextNodesIndices, i, beforePathDeps);
+        //    deps = JobHandle.CombineDependencies(deps, newHandle);
+        //}
+
+        deps = new FindPathJobParallel()
         {
+            nextNodesIndices = nextNodesIndices,
+            startNodesIndices = startPositionsIndices,
+            endNodeIndices = endPositionsIndices,
+            nodesNeighbors = gm.NodesNeighbors,
+            nodesTypes = gm.NodesTypes,
             numNodes = gm.GridWidth * gm.GridDepth,
             gridWidth = gm.GridWidth,
             numNeighbors = GridMaster.NodeNumNeighbors,
-            startNodesIndices = calcStartEndJob.startPositionsIndices,
-            endNodeIndices = calcStartEndJob.endPositionsIndices,
-            nodesNeighbors = gm.NodesNeighbors,
-            nodesTypes = gm.NodesTypes,
-            nextNodesIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory),
-        };
+        }
+        .Schedule(quantity, 1, deps);
 
-        JobHandle findPathsHandle = findPathsJob.Schedule(quantity, 1, calcStartEndHandle);
-
-        MoveAgentsJob moveJob = new MoveAgentsJob()
+        deps = new MoveAgentsJob()
         {
-            nodeIndicesDestinations = findPathsJob.nextNodesIndices,
+            nodeIndicesDestinations = nextNodesIndices,
             nodes = gm.NodesTransforms,
             speed = agentsSpeed,
             dt = dt,
-        };
-
-        JobHandle moveHandle = moveJob.Schedule(agentsTransAcc, findPathsHandle);
+        }
+        .Schedule(agentsTransAcc, deps);
 
         UpdateCamPivot(dt);
 
-        JobHandle disposeHandle = calcStartEndJob.startPositionsIndices.Dispose(findPathsHandle);
-        disposeHandle = JobHandle.CombineDependencies(disposeHandle, calcStartEndJob.endPositionsIndices.Dispose(findPathsHandle));
-        disposeHandle = JobHandle.CombineDependencies(disposeHandle, findPathsJob.nextNodesIndices.Dispose(moveHandle));
+        JobHandle disposeHandle = startPositionsIndices.Dispose(deps);
+        disposeHandle = JobHandle.CombineDependencies(disposeHandle, endPositionsIndices.Dispose(deps), nextNodesIndices.Dispose(deps));
 
-        JobHandle.CompleteAll(ref moveHandle, ref disposeHandle);
+        JobHandle.CompleteAll(ref deps, ref disposeHandle);
 
 #if !UNITY_EDITOR
         if (Keyboard.current.escapeKey.wasPressedThisFrame)

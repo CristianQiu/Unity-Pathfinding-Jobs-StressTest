@@ -98,13 +98,13 @@ namespace AStar
                 // we can't check for collider to be null since reference types are not allowed
                 bool validNode = hit.normal != default(Vector3);
 
-                float3 commandPos = command.from;
+                Vector3 commandPos = command.from;
                 commandPos.y = 0.0f;
 
-                float3 pos = math.select(commandPos, (float3)hit.point, validNode);
-                float3 normal = math.select(math.up(), (float3)hit.normal, validNode);
+                Vector3 pos = validNode ? hit.point : commandPos;
+                Vector3 normal = validNode ? Vector3.up : hit.normal;
 
-                nodesTransforms[index] = new NodeTransform(pos, normal);
+                nodesTransforms[index] = new NodeTransform((float3)pos, (float3)normal);
                 nodesTypes[index] = !validNode ? NodeType.Invalid : NodeType.Free;
             }
         }
@@ -136,8 +136,7 @@ namespace AStar
 
                 // nodes are squares and we don't plan to change it
                 float halfWidth = NodeHalfSize * boxNodePercentage;
-                float halfDepth = halfWidth;
-                Vector3 halfExtents = new Vector3(halfWidth, 0.01f, halfDepth);
+                Vector3 halfExtents = new Vector3(halfWidth, 0.01f, halfWidth);
 
                 commands[index] = new BoxcastCommand(center, halfExtents, (Quaternion)nt.GetRotation(), (Vector3)nt.up, maxCharacterHeight, mask);
             }
