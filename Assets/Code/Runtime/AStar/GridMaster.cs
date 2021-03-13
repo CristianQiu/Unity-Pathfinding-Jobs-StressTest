@@ -273,9 +273,6 @@ namespace AStar
 
         #region Private Attributes
 
-        private const float MinDotErrorToConsiderRamp = 0.01f;
-        private const float MinHeightDistToConsiderStepInSameNode = 0.01f;
-
         [Header("Construction settings")]
         [SerializeField] private LayerMask walkableMask = default;
         [SerializeField] private LayerMask obstacleMask = default;
@@ -445,16 +442,6 @@ namespace AStar
         #region Methods
 
         /// <summary>
-        /// Returns the closest point to the given position that is within the bounding box.
-        /// </summary>
-        /// <param name="pos"></param>
-        /// <returns></returns>
-        public Vector3 ClampPosToNodesBoundingBox(Vector3 pos)
-        {
-            return scanCollider.bounds.ClosestPoint(pos);
-        }
-
-        /// <summary>
         /// Converts a world position to a node index. Returns -1 if the position is not within the grid.
         /// </summary>
         /// <param name="pos"></param>
@@ -487,96 +474,6 @@ namespace AStar
             int col = Mathf.FloorToInt(localPos.x / NodeSize);
 
             return row * gridWidth + col;
-        }
-
-        /// <summary>
-        /// Get the transform of the node corresponding to a position.
-        /// </summary>
-        /// <param name="pos"></param>
-        /// <returns></returns>
-        public NodeTransform PosToNode(Vector3 pos)
-        {
-            int index = PosToNodeIndex(pos);
-
-            if (index < 0)
-            {
-                Logger.LogWarning("Trying to convert a position to a node, but it is not possible because there is not a node that corresponds to the given position. Returning default value for the node.");
-                return default(NodeTransform);
-            }
-
-            return nodesTransforms[index];
-        }
-
-        /// <summary>
-        /// Gets the node transform associated to a node index.
-        /// </summary>
-        /// <param name="nodeIndex"></param>
-        /// <returns></returns>
-        public NodeTransform GetNodeTransform(int nodeIndex)
-        {
-            if (NodeIndexOutOfBounds(nodeIndex))
-            {
-                Logger.LogWarningFormat("Trying to get a node transform from invalid node index {0}", nodeIndex.ToString());
-                return default(NodeTransform);
-            }
-
-            return nodesTransforms[nodeIndex];
-        }
-
-        /// <summary>
-        /// Gets how is the given node index occupied state.
-        /// </summary>
-        /// <param name="nodeIndex"></param>
-        /// <returns></returns>
-        public NodeType GetNodeOccupation(int nodeIndex)
-        {
-            if (NodeIndexOutOfBounds(nodeIndex))
-            {
-                Logger.LogWarningFormat("Trying to get node occupation from invalid node index {0}", nodeIndex.ToString());
-                return NodeType.Invalid;
-            }
-
-            return nodesTypes[nodeIndex];
-        }
-
-        /// <summary>
-        /// Sets the node occupation at the given pos. It can also be freed from any character that
-        /// may be occupying it.
-        /// </summary>
-        /// <param name="pos"></param>
-        /// <param name="occupiedReason"></param>
-        public void SetNodeOccupation(Vector3 pos, NodeType occupiedReason)
-        {
-            int index = PosToNodeIndex(pos);
-
-            SetNodeOccupation(index, occupiedReason);
-        }
-
-        /// <summary>
-        /// Sets the node occupation at the node index. It can also be freed from any character that
-        /// may be occupying it.
-        /// </summary>
-        /// <param name="nodeIndex"></param>
-        /// <param name="occupiedReason"></param>
-        public void SetNodeOccupation(int nodeIndex, NodeType occupiedReason)
-        {
-            if (NodeIndexOutOfBounds(nodeIndex))
-            {
-                Logger.LogWarning("Trying to occupy a node, but it is not possible because the node index is invalid.");
-                return;
-            }
-
-            nodesTypes[nodeIndex] = occupiedReason;
-        }
-
-        /// <summary>
-        /// Gets whether the given node index is out of the bounds.
-        /// </summary>
-        /// <param name="nodeIndex"></param>
-        /// <returns></returns>
-        private bool NodeIndexOutOfBounds(int nodeIndex)
-        {
-            return nodeIndex < 0 || nodeIndex >= gridWidth * gridDepth;
         }
 
         #endregion

@@ -56,8 +56,6 @@ namespace AStar
             }
         }
 
-        #region Methods
-
         /// <summary>
         /// Gets the rotation of the node.
         /// </summary>
@@ -66,75 +64,6 @@ namespace AStar
         {
             return quaternion.LookRotation(fwd, up);
         }
-
-        /// <summary>
-        /// Gets the given corner point with the given extension, to virtually scale the node.
-        /// </summary>
-        /// <param name="corner"></param>
-        /// <param name="extension"></param>
-        /// <param name="localUpwardsFactor"></param>
-        /// <returns></returns>
-        public float3 GetCorner(NodeRelativeCorner corner, float extension, float localUpwardsFactor, float separationFromMidPoint = 1.0f)
-        {
-            float3 p = pos;
-            extension *= 0.5f;
-
-            switch (corner)
-            {
-                case NodeRelativeCorner.TopLeft:
-                    p += (fwd * separationFromMidPoint - right * separationFromMidPoint) * extension;
-                    break;
-
-                case NodeRelativeCorner.TopRight:
-                    p += (fwd * separationFromMidPoint + right * separationFromMidPoint) * extension;
-                    break;
-
-                case NodeRelativeCorner.BotRight:
-                    p += (-fwd * separationFromMidPoint + right * separationFromMidPoint) * extension;
-                    break;
-
-                case NodeRelativeCorner.BotLeft:
-                    p += (-fwd * separationFromMidPoint - right * separationFromMidPoint) * extension;
-                    break;
-            }
-
-            p += (localUpwardsFactor * up);
-
-            return p;
-        }
-
-        /// <summary>
-        /// Gets the direction towards the relative neighbor.
-        /// </summary>
-        /// <param name="relativeNeighbor"></param>
-        /// <returns></returns>
-        public float3 GetDirTowardsNeighbor(NodeRelativeNeighbor relativeNeighbor)
-        {
-            float3 dir = float3.zero;
-
-            switch (relativeNeighbor)
-            {
-                case NodeRelativeNeighbor.Top:
-                    dir = fwd;
-                    break;
-
-                case NodeRelativeNeighbor.Right:
-                    dir = right;
-                    break;
-
-                case NodeRelativeNeighbor.Bottom:
-                    dir = -fwd;
-                    break;
-
-                case NodeRelativeNeighbor.Left:
-                    dir = -right;
-                    break;
-            }
-
-            return dir;
-        }
-
-        #endregion
     }
 
     /// <summary>
@@ -171,22 +100,6 @@ namespace AStar
     }
 
     /// <summary>
-    /// The information for a given node for the depth and parent node index in BFS to find
-    /// reachable nodes.
-    /// </summary>
-    public struct NodeBreadthFirstSearchInfo
-    {
-        public int depth;
-        public int parentNodeIndex;
-
-        public NodeBreadthFirstSearchInfo(int depth, int parentNodeIndex)
-        {
-            this.depth = depth;
-            this.parentNodeIndex = parentNodeIndex;
-        }
-    }
-
-    /// <summary>
     /// The possible neighboring layouts for the nodes.
     /// </summary>
     public enum NeighborLayout
@@ -206,29 +119,5 @@ namespace AStar
         OccupiedByCharacter, // < with a character over it, walkable but only by the character standing on it
         OccupiedByObstacle, // < an obstacle over it, not walkable
         Invalid // < with no floor below
-    }
-
-    /// <summary>
-    /// The possible neighboring relative positions of the node.
-    /// </summary>
-    public enum NodeRelativeNeighbor
-    {
-        Top,
-        Right,
-        Bottom,
-        Left,
-
-        Count
-    }
-
-    /// <summary>
-    /// The corners of the node, useful for visual representations.
-    /// </summary>
-    public enum NodeRelativeCorner
-    {
-        TopLeft,
-        TopRight,
-        BotRight,
-        BotLeft
     }
 }
