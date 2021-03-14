@@ -3,11 +3,11 @@ using TMPro;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
-using Unity.Mathematics;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Jobs;
+using UnityEngine.Profiling;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Random = Unity.Mathematics.Random;
@@ -15,7 +15,7 @@ using Random = Unity.Mathematics.Random;
 /// <summary>
 /// Class to make a quick stress test of the jobified pathfinding.
 /// </summary>
-[DefaultExecutionOrder(1)] // < Make sure the AStar system is initialized so we can safely do stuff on start, like building the grid.
+[DefaultExecutionOrder(1)] // < Quick way to ensure the AStar system & debug is initialized so we can safely do stuff on start, like building the grid.
 public class StressTester : MonoBehaviour
 {
     #region Jobs
@@ -75,163 +75,6 @@ public class StressTester : MonoBehaviour
     }
 
     [BurstCompile]
-    private struct FindPathJobParallel : IJobParallelFor
-    {
-        [WriteOnly] public NativeArray<int> nextNodesIndices;
-
-        [ReadOnly] public NativeArray<int> startNodesIndices;
-        [ReadOnly] public NativeArray<int> endNodeIndices;
-
-        [ReadOnly] public NativeArray<NodeNeighbor> nodesNeighbors;
-        [ReadOnly] public NativeArray<NodeType> nodesTypes;
-
-        public int numNodes;
-        public int gridWidth;
-        public int numNeighbors;
-
-        public void Execute(int index)
-        {
-            int startNodeIndex = startNodesIndices[index];
-            int endNodeIndex = endNodeIndices[index];
-
-            // when an index is invalid, it's set to -1
-            if (startNodeIndex < 0 || endNodeIndex < 0)
-            {
-                nextNodesIndices[index] = -1;
-                return;
-            }
-
-            NativeArray<NodePathFindInfo> nodesInfo = new NativeArray<NodePathFindInfo>(numNodes, Allocator.Temp);
-            NativeList<int> openSet = new NativeList<int>(272, Allocator.Temp);
-            NativeBitArray openSetContains = new NativeBitArray(numNodes, Allocator.Temp);
-            NativeBitArray closedSet = new NativeBitArray(numNodes, Allocator.Temp);
-
-            // set the info for the first node
-            nodesInfo[startNodeIndex] = new NodePathFindInfo(0, GetHeuristic(startNodeIndex, endNodeIndex), -1);
-            openSet.AddNoResize(startNodeIndex);
-
-            while (openSet.Length > 0)
-            {
-                int currNodeIndex = PopLowestFCostNodeIndexFromOpenSet(openSet, nodesInfo);
-
-                // we've reached the goal
-                if (currNodeIndex == endNodeIndex)
-                {
-                    ReconstructPath(index, startNodeIndex, nodesInfo);
-                    return;
-                }
-
-                // add it to the closed set by setting a flag at its index
-                closedSet.Set(currNodeIndex, true);
-                NodePathFindInfo currNodeInfo = nodesInfo[currNodeIndex];
-
-                // go over the neighbors
-                int start = currNodeIndex * numNeighbors;
-                int end = start + numNeighbors;
-
-                for (int i = start; i < end; i++)
-                {
-                    int neighborIndex = nodesNeighbors[i].neighborIndex;
-                    bool valid = nodesNeighbors[i].isValid;
-
-                    // if it does not have neighbor or was already expanded
-                    if (!valid || closedSet.IsSet(neighborIndex))
-                        continue;
-
-                    NodeType nodeType = nodesTypes[neighborIndex];
-
-                    // can't be walked by
-                    if ((byte)nodeType > 0)
-                        continue;
-
-                    NodePathFindInfo neighborNodeInfo = nodesInfo[neighborIndex];
-                    int newGCost = currNodeInfo.gCost + GetHeuristic(currNodeIndex, neighborIndex);
-
-                    // not in open set
-                    if (!openSetContains.IsSet(neighborIndex))
-                    {
-                        // update parent, costs, and add to the open set
-                        neighborNodeInfo.gCost = newGCost;
-                        neighborNodeInfo.hCost = GetHeuristic(neighborIndex, endNodeIndex);
-                        neighborNodeInfo.parentNodeIndex = currNodeIndex;
-
-                        nodesInfo[neighborIndex] = neighborNodeInfo;
-                        openSet.AddNoResize(neighborIndex);
-                        openSetContains.Set(neighborIndex, true);
-                    }
-                    else if (newGCost < neighborNodeInfo.gCost)
-                    {
-                        // update parent, and gCost (hCost is already calculated)
-                        neighborNodeInfo.gCost = newGCost;
-                        neighborNodeInfo.parentNodeIndex = currNodeIndex;
-
-                        nodesInfo[neighborIndex] = neighborNodeInfo;
-                    }
-                }
-            }
-
-            nextNodesIndices[index] = -1;
-        }
-
-        private int PopLowestFCostNodeIndexFromOpenSet(NativeList<int> openSet, NativeArray<NodePathFindInfo> nodesInfo)
-        {
-            int foundAtIndex = -1;
-            int lowestIndex = -1;
-
-            int lowestFCostHCost = int.MaxValue;
-            int lowestFCostVal = int.MaxValue;
-
-            for (int i = 0; i < openSet.Length; i++)
-            {
-                int currNodeIndex = openSet[i];
-                NodePathFindInfo info = nodesInfo[currNodeIndex];
-
-                if (info.FCost < lowestFCostVal || info.FCost == lowestFCostVal && info.hCost < lowestFCostHCost)
-                {
-                    foundAtIndex = i;
-
-                    lowestIndex = currNodeIndex;
-                    lowestFCostHCost = info.hCost;
-                    lowestFCostVal = info.FCost;
-                }
-            }
-
-            openSet.RemoveAtSwapBack(foundAtIndex);
-
-            return lowestIndex;
-        }
-
-        private int GetHeuristic(int fromNodeIndex, int toNodeIndex)
-        {
-            int fromRow = fromNodeIndex / gridWidth;
-            int fromCol = fromNodeIndex % gridWidth;
-
-            int toRow = toNodeIndex / gridWidth;
-            int toCol = toNodeIndex % gridWidth;
-
-            int rowOffset = math.max(fromRow, toRow) - math.min(fromRow, toRow);
-            int colOffset = math.max(fromCol, toCol) - math.min(fromCol, toCol);
-
-            return rowOffset + colOffset;
-        }
-
-        private void ReconstructPath(int index, int startNodeIndex, NativeArray<NodePathFindInfo> nodesInfo)
-        {
-            int currNode = endNodeIndices[index];
-            int nextNode = -1;
-
-            while (currNode != startNodeIndex)
-            {
-                nextNode = currNode;
-                int parentNodeIndex = nodesInfo[currNode].parentNodeIndex;
-                currNode = parentNodeIndex;
-            }
-
-            nextNodesIndices[index] = nextNode;
-        }
-    }
-
-    [BurstCompile]
     private struct MoveAgentsJob : IJobParallelForTransform
     {
         [ReadOnly] public NativeArray<int> nodeIndicesDestinations;
@@ -267,6 +110,8 @@ public class StressTester : MonoBehaviour
     private TransformAccessArray agentsTransAcc;
     private NativeArray<Vector3> endPositionsToChooseFrom;
 
+    private CustomSampler sampler = CustomSampler.Create("StressTester.SchedulePathsLoop");
+
     #endregion
 
     #region MonoBehaviour Methods
@@ -295,8 +140,6 @@ public class StressTester : MonoBehaviour
         NativeArray<int> startPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
         NativeArray<int> endPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
 
-        Debug.Log("MB temp allocator " + (UnityEngine.Profiling.Profiler.GetTempAllocatorSize() / (1024 * 1024)));
-
         JobHandle deps = new CalculateStartEndPosJob()
         {
             startPositionsIndices = startPositionsIndices,
@@ -312,30 +155,26 @@ public class StressTester : MonoBehaviour
         .Schedule(agentsTransAcc);
 
         NativeArray<int> nextNodesIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-
         NativeArray<JobHandle> handles = new NativeArray<JobHandle>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+
+        sampler.Begin();
 
         for (int i = 0; i < quantity; i++)
         {
-            handles[i] = Pathfinder.ScheduleFindPath(startPositionsIndices, endPositionsIndices, nextNodesIndices, i, deps);
+            handles[i] = Pathfinder.ScheduleFindPath(gm, startPositionsIndices, endPositionsIndices, nextNodesIndices, i, deps);
+
+            // Note: This number should be somewhat related to the number of logical processors, although
+            // I feel like 64 is a good balance for almost any system. We are forcing worker threads
+            // to do the jobs while the main thread keeps scheduling. This loop can take up to .5ms
+            // in my machine.
+            if ((i + 1) % 64 == 0)
+                JobHandle.ScheduleBatchedJobs();
         }
 
-        //deps = JobHandle.CombineDependencies(handles);
-        JobHandle.CompleteAll(handles);
-        handles.Dispose();
+        sampler.End();
 
-        //deps = new FindPathJobParallel()
-        //{
-        //    nextNodesIndices = nextNodesIndices,
-        //    startNodesIndices = startPositionsIndices,
-        //    endNodeIndices = endPositionsIndices,
-        //    nodesNeighbors = gm.NodesNeighbors,
-        //    nodesTypes = gm.NodesTypes,
-        //    numNodes = gm.GridWidth * gm.GridDepth,
-        //    gridWidth = gm.GridWidth,
-        //    numNeighbors = GridMaster.NodeNumNeighbors,
-        //}
-        //.Schedule(quantity, 1, deps);
+        deps = JobHandle.CombineDependencies(handles);
+        handles.Dispose(deps);
 
         deps = new MoveAgentsJob()
         {

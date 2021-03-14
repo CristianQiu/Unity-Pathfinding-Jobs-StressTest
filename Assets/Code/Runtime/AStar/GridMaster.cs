@@ -102,7 +102,7 @@ namespace AStar
                 commandPos.y = 0.0f;
 
                 float3 pos = validNode ? (float3)hit.point : commandPos;
-                float3 normal = validNode ? math.up() : (float3)hit.normal;
+                float3 normal = validNode ? (float3)hit.normal : math.up();
 
                 nodesTransforms[index] = new NodeTransform(pos, normal);
                 nodesTypes[index] = !validNode ? NodeType.Invalid : NodeType.Free;
@@ -354,6 +354,8 @@ namespace AStar
             // schedule the commands to retrieve the initial hits
             NativeArray<RaycastHit> nodeHits = new NativeArray<RaycastHit>(expectedGridDimension, Allocator.TempJob);
             createNodesHandle = RaycastCommand.ScheduleBatch(mainCommands, nodeHits, 32, createNodesHandle);
+
+            JobHandle.ScheduleBatchedJobs();
 
             // build the nodes using the received hits and the main raycast commands
             createNodesHandle = new CreateNodesJob

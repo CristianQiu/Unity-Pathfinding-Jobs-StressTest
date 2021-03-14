@@ -41,16 +41,29 @@ namespace AStar
                 startNodeIndex = startIndices[jobIndex];
                 endNodeIndex = endIndices[jobIndex];
 
-                // Note: TODO: I have been reading lately and discovered in one side project, that
-                // Temp allocator can fall back to an allocation that is even slower than TempJob. I
-                // have no idea what is the size of the memory block that is used for Temp
-                // allocations, which is reused, automatically "disposed" by Unity at the end of the
-                // frame, and the reason why Temp allocations can not live more than 1 frame. If I
-                // used this job in a massive way, I should look back at this, as I am completely
-                // sure that the nodesInfo array is already a risk, easily occupying 3*4*10k bytes.
+                // Note: Temp allocator can fall back to a very much slower version if the block of
+                // memory that it uses is exhausted. By the looks of the tests that I have done, it
+                // seems that this memory is released after the job is finished. I had this
+                // originally in an IJobFor or IJobParallelFor and there were threads that
+                // introduced significant bottlenecks due to this issue (the inner loop batch count
+                // didn't matter), but after switching to a "batch of IJobs" this issue is gone, as
+                // the maximum jobs that can run at the same time is just the number of logical
+                // threads of the system, which shouldn't be more than ~32 in a high end system
+                // (although some threadrippers can go up to 128, which eventually may be an issue
+                // again). I have tested this in a complete flat map with no obstacles, and the time
+                // to complete each job is reasonably similar, and no fallbacks appear in the
+                // profiler. A decent optimization would be to constrain the map to a 255x255 size,
+                // so we cut in half the number of bytes required for the openset and nodesInfo by
+                // swapping to ushorts.
                 NativeArray<NodePathFindInfo> nodesInfo = new NativeArray<NodePathFindInfo>(numNodes, Allocator.Temp);
                 NativeBitArray closedSet = new NativeBitArray(numNodes, Allocator.Temp);
                 NativeBitArray openSetContains = new NativeBitArray(numNodes, Allocator.Temp);
+
+                // Warning: 272 is a magical number due to the map layout and possible paths, which
+                // seems to not throw errors about being too low for the test scene. This list
+                // should be somewhat constrained to a low range in order to keep the algorithm
+                // performant, otherwise it would be worth to look at implementing a native binary
+                // heap to speed up the extaction of the lowest fcost node.
                 NativeList<int> openSet = new NativeList<int>(272, Allocator.Temp);
 
                 // set the info for the first node
@@ -96,8 +109,6 @@ namespace AStar
                             neighborNodeInfo.parentNodeIndex = currNodeIndex;
 
                             nodesInfo[neighborIndex] = neighborNodeInfo;
-
-                            // ADDNORESIZE
                             openSet.AddNoResize(neighborIndex);
                             openSetContains.SetBits(neighborIndex, 1);
                         }
@@ -112,15 +123,16 @@ namespace AStar
                     }
                 }
 
-                //// Note: TODO? I think the only way to get here is if the way to a valid end node is
-                //// completely blocked, in which case I should decide what to do
-                //ReconstructPath(reversedPathResultIndices, nodesInfo);
+                // Note: TODO? I think the only way to get here is if the way to a valid end node is
+                // completely blocked, in which case I should decide what to do
                 return;
             }
 
             /// <summary>
             /// Pops the lowest FCost node index from the open set.
             /// </summary>
+            /// <param name="openSet"></param>
+            /// <param name="nodesInfo"></param>
             /// <returns></returns>
             private int PopLowestFCostNodeIndexFromOpenSet(NativeList<int> openSet, NativeArray<NodePathFindInfo> nodesInfo)
             {
@@ -196,11 +208,19 @@ namespace AStar
 
         #region Pathfinding Methods
 
-        public static JobHandle ScheduleFindPath(NativeArray<int> startIndices, NativeArray<int> endIndices, NativeArray<int> nextIndices, int jobIndex, JobHandle deps)
+        /// <summary>
+        /// Schedules one pathfinding job.
+        /// </summary>
+        /// <param name="gm"></param>
+        /// <param name="startIndices"></param>
+        /// <param name="endIndices"></param>
+        /// <param name="nextIndices"></param>
+        /// <param name="jobIndex"></param>
+        /// <param name="deps"></param>
+        /// <returns></returns>
+        public static JobHandle ScheduleFindPath(GridMaster gm, NativeArray<int> startIndices, NativeArray<int> endIndices, NativeArray<int> nextIndices, int jobIndex, JobHandle deps)
         {
-            GridMaster gm = GridMaster.Instance;
-
-            deps = new FindPathJob
+            return new FindPathJob
             {
                 nextIndices = nextIndices,
                 startIndices = startIndices,
@@ -213,8 +233,6 @@ namespace AStar
                 numNeighbors = GridMaster.NodeNumNeighbors,
             }
             .Schedule(deps);
-
-            return deps;
         }
 
         #endregion
