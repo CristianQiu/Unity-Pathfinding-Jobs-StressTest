@@ -98,13 +98,13 @@ namespace AStar
                 // we can't check for collider to be null since reference types are not allowed
                 bool validNode = hit.normal != default(Vector3);
 
-                Vector3 commandPos = command.from;
+                float3 commandPos = (float3)command.from;
                 commandPos.y = 0.0f;
 
-                Vector3 pos = validNode ? hit.point : commandPos;
-                Vector3 normal = validNode ? Vector3.up : hit.normal;
+                float3 pos = validNode ? (float3)hit.point : commandPos;
+                float3 normal = validNode ? math.up() : (float3)hit.normal;
 
-                nodesTransforms[index] = new NodeTransform((float3)pos, (float3)normal);
+                nodesTransforms[index] = new NodeTransform(pos, normal);
                 nodesTypes[index] = !validNode ? NodeType.Invalid : NodeType.Free;
             }
         }
@@ -337,10 +337,9 @@ namespace AStar
             int expectedGridDimension = scanSettings.gridDimension;
 
             // TODO: Could I use nodesTypes invalid to avoid any kind of computation from them?
-            // TODO: Could I actually initialize it without clearing memory?
-            nodesTransforms = new NativeArray<NodeTransform>(expectedGridDimension, Allocator.Persistent);
-            nodesTypes = new NativeArray<NodeType>(expectedGridDimension, Allocator.Persistent);
-            nodesNeighbors = new NativeArray<NodeNeighbor>(expectedGridDimension * NodeNumNeighbors, Allocator.Persistent);
+            nodesTransforms = new NativeArray<NodeTransform>(expectedGridDimension, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            nodesTypes = new NativeArray<NodeType>(expectedGridDimension, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            nodesNeighbors = new NativeArray<NodeNeighbor>(expectedGridDimension * NodeNumNeighbors, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
 
             // calculate the initial raycast commands
             NativeArray<RaycastCommand> mainCommands = new NativeArray<RaycastCommand>(expectedGridDimension, Allocator.TempJob);

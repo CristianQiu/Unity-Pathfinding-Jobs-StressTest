@@ -45,6 +45,7 @@ namespace AStar
             /// <inheritdoc/>
             public void Execute()
             {
+                /*
                 startNodeIndex = startIndices[jobIndex];
                 endNodeIndex = endIndices[jobIndex];
 
@@ -117,6 +118,7 @@ namespace AStar
                 //// completely blocked, in which case I should decide what to do
                 //ReconstructPath(reversedPathResultIndices, nodesInfo);
                 return;
+                */
             }
 
             /// <summary>
