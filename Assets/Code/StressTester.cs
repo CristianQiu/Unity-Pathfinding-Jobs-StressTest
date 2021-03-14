@@ -157,8 +157,6 @@ public class StressTester : MonoBehaviour
         NativeArray<int> nextNodesIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
         NativeArray<JobHandle> handles = new NativeArray<JobHandle>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
 
-        sampler.Begin();
-
         for (int i = 0; i < quantity; i++)
         {
             handles[i] = Pathfinder.ScheduleFindPath(gm, startPositionsIndices, endPositionsIndices, nextNodesIndices, i, deps);
@@ -166,15 +164,24 @@ public class StressTester : MonoBehaviour
             // Note: This number should be somewhat related to the number of logical processors, although
             // I feel like 64 is a good balance for almost any system. We are forcing worker threads
             // to do the jobs while the main thread keeps scheduling. This loop can take up to .5ms
-            // in my machine.
+            // with 1k agents (in build!) on my machine.
             if ((i + 1) % 64 == 0)
+            {
+                sampler.Begin();
+
                 JobHandle.ScheduleBatchedJobs();
+
+                sampler.End();
+            }
+            else
+            {
+            }
         }
 
-        sampler.End();
-
         deps = JobHandle.CombineDependencies(handles);
-        handles.Dispose(deps);
+        deps.Complete();
+
+        sampler.Begin();
 
         deps = new MoveAgentsJob()
         {
@@ -187,8 +194,15 @@ public class StressTester : MonoBehaviour
 
         UpdateCamPivot(dt);
 
-        JobHandle disposeHandle = startPositionsIndices.Dispose(deps);
-        disposeHandle = JobHandle.CombineDependencies(disposeHandle, endPositionsIndices.Dispose(deps), nextNodesIndices.Dispose(deps));
+        sampler.End();
+
+        sampler.Begin();
+
+        JobHandle disposeHandle = default(JobHandle);
+        disposeHandle = JobHandle.CombineDependencies(startPositionsIndices.Dispose(disposeHandle), endPositionsIndices.Dispose(disposeHandle), handles.Dispose(disposeHandle));
+        disposeHandle = JobHandle.CombineDependencies(disposeHandle, nextNodesIndices.Dispose(deps));
+
+        sampler.End();
 
         JobHandle.CompleteAll(ref deps, ref disposeHandle);
 
