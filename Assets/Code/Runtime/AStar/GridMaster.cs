@@ -437,44 +437,5 @@ namespace AStar
         }
 
         #endregion
-
-        #region Methods
-
-        /// <summary>
-        /// Converts a world position to a node index. Returns -1 if the position is not within the grid.
-        /// </summary>
-        /// <param name="pos"></param>
-        /// <returns></returns>
-        public int PosToNodeIndex(Vector3 pos)
-        {
-            int index = -1;
-
-            Vector3 localPos = pos - scanCollider.bounds.center;
-            Vector3 extents = scanCollider.bounds.extents;
-
-            // TODO: Don't allow negative extents when editing the collider
-            float restX = extents.x % NodeSize;
-            float restZ = extents.z % NodeSize;
-
-            float flooredX = extents.x - restX;
-            float flooredZ = extents.z - restZ;
-
-            Vector3 flooredExtents = new Vector3(flooredX, 0.0f, flooredZ);
-
-            if (!isGridCreated ||
-                localPos.x < -flooredExtents.x || localPos.x > flooredExtents.x ||
-                localPos.z < -flooredExtents.z || localPos.z > flooredExtents.z)
-                return index;
-
-            // get rid of negative values
-            localPos += flooredExtents;
-
-            int row = Mathf.FloorToInt(localPos.z / NodeSize);
-            int col = Mathf.FloorToInt(localPos.x / NodeSize);
-
-            return row * gridWidth + col;
-        }
-
-        #endregion
     }
 }
