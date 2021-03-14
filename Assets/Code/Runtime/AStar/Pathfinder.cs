@@ -3,7 +3,6 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
-using UnityEngine;
 
 namespace AStar
 {
@@ -20,12 +19,6 @@ namespace AStar
         [BurstCompile]
         private struct FindPathJob : IJob
         {
-            public NativeList<int> openSet;
-            public NativeBitArray closedSet;
-
-            public NativeBitArray openSetContains;
-            public NativeArray<NodePathFindInfo> nodesInfo;
-
             [WriteOnly, NativeDisableContainerSafetyRestriction] public NativeArray<int> nextIndices;
 
             [ReadOnly] public NativeArray<int> startIndices;
@@ -45,7 +38,6 @@ namespace AStar
             /// <inheritdoc/>
             public void Execute()
             {
-                /*
                 startNodeIndex = startIndices[jobIndex];
                 endNodeIndex = endIndices[jobIndex];
 
@@ -56,6 +48,10 @@ namespace AStar
                 // frame, and the reason why Temp allocations can not live more than 1 frame. If I
                 // used this job in a massive way, I should look back at this, as I am completely
                 // sure that the nodesInfo array is already a risk, easily occupying 3*4*10k bytes.
+                NativeArray<NodePathFindInfo> nodesInfo = new NativeArray<NodePathFindInfo>(numNodes, Allocator.Temp);
+                NativeBitArray closedSet = new NativeBitArray(numNodes, Allocator.Temp);
+                NativeBitArray openSetContains = new NativeBitArray(numNodes, Allocator.Temp);
+                NativeList<int> openSet = new NativeList<int>(272, Allocator.Temp);
 
                 // set the info for the first node
                 nodesInfo[startNodeIndex] = new NodePathFindInfo(0, GetHeuristic(startNodeIndex, endNodeIndex), -1);
@@ -63,7 +59,7 @@ namespace AStar
 
                 while (openSet.Length > 0)
                 {
-                    int currNodeIndex = PopLowestFCostNodeIndexFromOpenSet();
+                    int currNodeIndex = PopLowestFCostNodeIndexFromOpenSet(openSet, nodesInfo);
 
                     // we've reached the goal
                     if (currNodeIndex == endNodeIndex)
@@ -100,6 +96,8 @@ namespace AStar
                             neighborNodeInfo.parentNodeIndex = currNodeIndex;
 
                             nodesInfo[neighborIndex] = neighborNodeInfo;
+
+                            // ADDNORESIZE
                             openSet.AddNoResize(neighborIndex);
                             openSetContains.SetBits(neighborIndex, 1);
                         }
@@ -118,14 +116,13 @@ namespace AStar
                 //// completely blocked, in which case I should decide what to do
                 //ReconstructPath(reversedPathResultIndices, nodesInfo);
                 return;
-                */
             }
 
             /// <summary>
             /// Pops the lowest FCost node index from the open set.
             /// </summary>
             /// <returns></returns>
-            private int PopLowestFCostNodeIndexFromOpenSet()
+            private int PopLowestFCostNodeIndexFromOpenSet(NativeList<int> openSet, NativeArray<NodePathFindInfo> nodesInfo)
             {
                 int foundAtIndex = -1;
                 int lowestIndex = -1;
@@ -203,20 +200,8 @@ namespace AStar
         {
             GridMaster gm = GridMaster.Instance;
 
-            // Note: these could be made Temp inside the job but I need them so I can add visual debug
-            int openSetFixedMaxElements = Mathf.Max(128, gm.Dimension / 2);
-            NativeList<int> openSet = new NativeList<int>(300, Allocator.TempJob);
-            NativeBitArray closedSet = new NativeBitArray(gm.Dimension, Allocator.TempJob);
-
-            NativeBitArray openSetContains = new NativeBitArray(gm.Dimension, Allocator.TempJob);
-            NativeArray<NodePathFindInfo> nodesInfo = new NativeArray<NodePathFindInfo>(gm.Dimension, Allocator.TempJob);
-
             deps = new FindPathJob
             {
-                openSet = openSet,
-                closedSet = closedSet,
-                openSetContains = openSetContains,
-                nodesInfo = nodesInfo,
                 nextIndices = nextIndices,
                 startIndices = startIndices,
                 endIndices = endIndices,
@@ -228,11 +213,6 @@ namespace AStar
                 numNeighbors = GridMaster.NodeNumNeighbors,
             }
             .Schedule(deps);
-
-            deps = openSet.Dispose(deps);
-            deps = closedSet.Dispose(deps);
-            deps = openSetContains.Dispose(deps);
-            deps = nodesInfo.Dispose(deps);
 
             return deps;
         }

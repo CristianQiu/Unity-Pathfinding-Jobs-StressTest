@@ -295,7 +295,7 @@ public class StressTester : MonoBehaviour
         NativeArray<int> startPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
         NativeArray<int> endPositionsIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
 
-        Debug.Log("temp allocator " + UnityEngine.Profiling.Profiler.GetTempAllocatorSize());
+        Debug.Log("MB temp allocator " + (UnityEngine.Profiling.Profiler.GetTempAllocatorSize() / (1024 * 1024)));
 
         JobHandle deps = new CalculateStartEndPosJob()
         {
@@ -311,29 +311,31 @@ public class StressTester : MonoBehaviour
         }
         .Schedule(agentsTransAcc);
 
-        //NativeArray<JobHandle> pathHandles = new NativeArray<JobHandle>(quantity, Allocator.TempJob);
-
         NativeArray<int> nextNodesIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-        //JobHandle beforePathDeps = deps;
 
-        //for (int i = 0; i < quantity; i++)
-        //{
-        //    JobHandle newHandle = Pathfinder.ScheduleFindPath(startPositionsIndices, endPositionsIndices, nextNodesIndices, i, beforePathDeps);
-        //    deps = JobHandle.CombineDependencies(deps, newHandle);
-        //}
+        NativeArray<JobHandle> handles = new NativeArray<JobHandle>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
 
-        deps = new FindPathJobParallel()
+        for (int i = 0; i < quantity; i++)
         {
-            nextNodesIndices = nextNodesIndices,
-            startNodesIndices = startPositionsIndices,
-            endNodeIndices = endPositionsIndices,
-            nodesNeighbors = gm.NodesNeighbors,
-            nodesTypes = gm.NodesTypes,
-            numNodes = gm.GridWidth * gm.GridDepth,
-            gridWidth = gm.GridWidth,
-            numNeighbors = GridMaster.NodeNumNeighbors,
+            handles[i] = Pathfinder.ScheduleFindPath(startPositionsIndices, endPositionsIndices, nextNodesIndices, i, deps);
         }
-        .Schedule(quantity, 1, deps);
+
+        //deps = JobHandle.CombineDependencies(handles);
+        JobHandle.CompleteAll(handles);
+        handles.Dispose();
+
+        //deps = new FindPathJobParallel()
+        //{
+        //    nextNodesIndices = nextNodesIndices,
+        //    startNodesIndices = startPositionsIndices,
+        //    endNodeIndices = endPositionsIndices,
+        //    nodesNeighbors = gm.NodesNeighbors,
+        //    nodesTypes = gm.NodesTypes,
+        //    numNodes = gm.GridWidth * gm.GridDepth,
+        //    gridWidth = gm.GridWidth,
+        //    numNeighbors = GridMaster.NodeNumNeighbors,
+        //}
+        //.Schedule(quantity, 1, deps);
 
         deps = new MoveAgentsJob()
         {
