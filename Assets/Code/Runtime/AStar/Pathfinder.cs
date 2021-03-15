@@ -51,10 +51,11 @@ namespace AStar
                 // threads of the system, which shouldn't be more than ~32 in a high end system
                 // (although some threadrippers can go up to 128, which eventually may be an issue
                 // again). I have tested this in a complete flat map with no obstacles, and the time
-                // to complete each job is reasonably similar, and no fallbacks appear in the
-                // profiler. A decent optimization would be to constrain the map to a 255x255 size,
-                // so we cut in half the number of bytes required for the openset and nodesInfo by
-                // swapping to ushorts.
+                // to complete each job is reasonably similar.
+
+                // I have tried swapping this by just a plain int3 and surprisingly, it is
+                // substantially slower, I have also tried to go with ushorts rather than full ints,
+                // and it does not make an identifiable difference.
                 NativeArray<NodePathFindInfo> nodesInfo = new NativeArray<NodePathFindInfo>(numNodes, Allocator.Temp);
                 NativeBitArray closedSet = new NativeBitArray(numNodes, Allocator.Temp);
                 NativeBitArray openSetContains = new NativeBitArray(numNodes, Allocator.Temp);
@@ -157,7 +158,10 @@ namespace AStar
                     }
                 }
 
-                // if we get to this function we are sure there is always at least one, no need to check
+                // I have tested RemoveAt vs RemoveAtSwapBack, and oddly enough there seems to be a
+                // extremely slightly difference in favour of RemoveAt, but perhaps this is due to
+                // the non-totally-deterministic stress test... I'm still surprised there is not a
+                // notable difference in favour of RemoveAtSwapBack though.
                 openSet.RemoveAtSwapBack(foundAtIndex);
 
                 return lowestIndex;

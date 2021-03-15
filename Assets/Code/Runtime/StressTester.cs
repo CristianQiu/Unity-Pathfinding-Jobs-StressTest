@@ -110,7 +110,7 @@ public class StressTester : MonoBehaviour
     private TransformAccessArray agentsTransAcc;
     private NativeArray<Vector3> endPositionsToChooseFrom;
 
-    private CustomSampler sampler = CustomSampler.Create("StressTester.SchedulePathsLoop");
+    private CustomSampler sampler = CustomSampler.Create("StressTester.CustomSample");
 
     #endregion
 
@@ -161,28 +161,23 @@ public class StressTester : MonoBehaviour
         {
             handles[i] = Pathfinder.ScheduleFindPath(gm, startPositionsIndices, endPositionsIndices, nextNodesIndices, i, deps);
 
-            // Note: This number should be somewhat related to the number of logical processors, although
-            // I feel like 64 is a good balance for almost any system. We are forcing worker threads
-            // to do the jobs while the main thread keeps scheduling. This loop can take up to .5ms
-            // with 1k agents (in build!) on my machine.
-            if ((i + 1) % 64 == 0)
-            {
-                sampler.Begin();
-
+            // There's some interesting balancing oportunity here, the greater the number, the
+            // lesser the overhead the main thread will have, and so it will be able to finish
+            // scheduling the rest of the task faster, but the greater the number the more time
+            // before the workers actually start performing the tasks, so a lot of time is wasted
+            // while the main thread keeps "enqueuing" the tasks and the workers are in idle. If
+            // you're benchmarking this, either make sure the jobsdebugger, safety checks and leak
+            // detection is off, or ideally, make a profiled build.
+            if ((i + 1) % 256 == 0)
                 JobHandle.ScheduleBatchedJobs();
-
-                sampler.End();
-            }
-            else
-            {
-            }
         }
 
+        // I feel like combining all of these (tested with 2.5k+ paths) is bottlenecking, perhaps
+        // there's a way of reordering all the stuff so that it makes a minimal impact, rather than
+        // an obvious bottleneck when there's very little work on the paths but a lot of paths. I
+        // suggest profiling in build and wait all agents to reach their destinations, then see the
+        // main thread in the profiler.
         deps = JobHandle.CombineDependencies(handles);
-        deps.Complete();
-
-        sampler.Begin();
-
         deps = new MoveAgentsJob()
         {
             nodeIndicesDestinations = nextNodesIndices,
@@ -192,17 +187,11 @@ public class StressTester : MonoBehaviour
         }
         .Schedule(agentsTransAcc, deps);
 
-        UpdateCamPivot(dt);
-
-        sampler.End();
-
-        sampler.Begin();
-
         JobHandle disposeHandle = default(JobHandle);
         disposeHandle = JobHandle.CombineDependencies(startPositionsIndices.Dispose(disposeHandle), endPositionsIndices.Dispose(disposeHandle), handles.Dispose(disposeHandle));
         disposeHandle = JobHandle.CombineDependencies(disposeHandle, nextNodesIndices.Dispose(deps));
 
-        sampler.End();
+        UpdateCamPivot(dt);
 
         JobHandle.CompleteAll(ref deps, ref disposeHandle);
 
