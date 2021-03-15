@@ -19,14 +19,10 @@ namespace UnityLibrary
         /// <returns></returns>
         public static T GetOrAddComponent<T>(GameObject gameObject, out bool hadToCreateIt) where T : Component
         {
-            hadToCreateIt = false;
-            bool alreadyHasIt = gameObject.TryGetComponent(out T component);
+            hadToCreateIt = !gameObject.TryGetComponent(out T component);
 
-            if (!alreadyHasIt)
-            {
+            if (hadToCreateIt)
                 component = gameObject.AddComponent<T>();
-                hadToCreateIt = true;
-            }
 
             return component;
         }
