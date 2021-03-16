@@ -60,12 +60,21 @@ namespace AStar
                 // CompleteAll or combining dependencies (do note that this is speculation based on
                 // my observations in the profiler though).
 
-                // Update2: I have ended using IJobFor with very low iterations (64 at most, but
-                // from 16 I see no improvements or degradation)
+                // Update2: I have ended using IJobFor with very low iterations (8 seem to work fine
+                // enough). I am now in a middle ground between 1. and 2. mentioned above. I think
+                // it is a decent spot but with lots of paths and very low work, I am seeing that
+                // some paths take extremely long time to be computed. At this point I think the
+                // only way to get it better is going into micro-optimization and some kind of
+                // hierarchiccal pathfinding, There are obviously other ways of computing
+                // pathfinding for large crowds such as flow fields, but I'm currently only
+                // interested in A*. If memory is really the problem, hierarchiccal pathfinding
+                // should greatly increase performance as constraining the searchs to i.e a 16x16
+                // grid (so we could use bytes for gCost and hCost and sub-indices). The open and
+                // closed set would also be extremely constrained and it may also be possible to use
+                // fixedlist for some of the info, which may give huge speedups.
 
                 // I have tried swapping this by just a plain int3 and surprisingly, it is
-                // substantially slower, I have also tried to go with ushorts rather than full ints,
-                // and it does not make an identifiable difference.
+                // substantially slower.
                 NativeArray<NodePathFindInfo> nodesInfo = new NativeArray<NodePathFindInfo>(numNodes, Allocator.Temp);
                 NativeBitArray closedSet = new NativeBitArray(numNodes, Allocator.Temp);
                 NativeBitArray openSetContains = new NativeBitArray(numNodes, Allocator.Temp);
