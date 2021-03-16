@@ -17,7 +17,7 @@ namespace AStar
         /// The job in charge of finding the path.
         /// </summary>
         [BurstCompile]
-        private struct FindPathJob : IJob
+        private struct FindPathJob : IJobFor
         {
             [WriteOnly, NativeDisableContainerSafetyRestriction] public NativeArray<int> nextIndices;
 
@@ -26,32 +26,42 @@ namespace AStar
             [ReadOnly] public NativeArray<NodeNeighbor> nodesNeighbors;
             [ReadOnly] public NativeArray<NodeType> nodesTypes;
 
-            public int jobIndex;
-
             public int numNodes;
             public int gridWidth;
             public int numNeighbors;
 
-            private int startNodeIndex;
-            private int endNodeIndex;
+            public int jobIndexStride;
 
-            /// <inheritdoc/>
-            public void Execute()
+            public void Execute(int index)
             {
-                startNodeIndex = startIndices[jobIndex];
-                endNodeIndex = endIndices[jobIndex];
+                int globalIndex = jobIndexStride + index;
+
+                int startNodeIndex = startIndices[globalIndex];
+                int endNodeIndex = endIndices[globalIndex];
 
                 // Note: Temp allocator can fall back to a very much slower version if the block of
                 // memory that it uses is exhausted. By the looks of the tests that I have done, it
                 // seems that this memory is released after the job is finished. I had this
-                // originally in an IJobFor or IJobParallelFor and there were threads that
-                // introduced significant bottlenecks due to this issue (the inner loop batch count
-                // didn't matter), but after switching to a "batch of IJobs" this issue is gone, as
-                // the maximum jobs that can run at the same time is just the number of logical
-                // threads of the system, which shouldn't be more than ~32 in a high end system
-                // (although some threadrippers can go up to 128, which eventually may be an issue
-                // again). I have tested this in a complete flat map with no obstacles, and the time
-                // to complete each job is reasonably similar.
+                // originally in an IJobParallelFor and there were threads that introduced
+                // significant bottlenecks due to this issue (the inner loop batch count didn't
+                // matter), but after switching to a "batch of IJobs" this issue is gone, as the
+                // maximum jobs that can run at the same time is just the number of logical threads
+                // of the system, which shouldn't be more than ~32 in a high end system (although
+                // some threadrippers can go up to 128, which eventually may be an issue again). I
+                // have tested this in a complete flat map with no obstacles, and the time to
+                // complete each job is reasonably similar.
+
+                // Update: I have been exhaustively testing the new approach with thousands of IJobs
+                // and simple paths. This approach is certainly much better than the one mentioned
+                // above, but it has a considerably big issue: when there's tons of simple paths,
+                // the dependencies become too complex and the main thread struggles more and more
+                // as the number of paths increases, since the workers push hard to finish all the
+                // tasks, but the main thread has to check every single jobhandle when calling
+                // CompleteAll or combining dependencies (do note that this is speculation based on
+                // my observations in the profiler though).
+
+                // Update2: I have ended using IJobFor with very low iterations (64 at most, but
+                // from 16 I see no improvements or degradation)
 
                 // I have tried swapping this by just a plain int3 and surprisingly, it is
                 // substantially slower, I have also tried to go with ushorts rather than full ints,
@@ -78,7 +88,7 @@ namespace AStar
                     // we've reached the goal
                     if (currNodeIndex == endNodeIndex)
                     {
-                        SaveNextNodeIndexToMoveTo(nodesInfo);
+                        SaveNextNodeIndexToMoveTo(globalIndex, nodesInfo);
                         return;
                     }
 
@@ -191,10 +201,12 @@ namespace AStar
             /// Reconstructs the path from the end index, and saves the next node index to move to
             /// in the corresponding position of the array.
             /// </summary>
+            /// <param name="globalIndex"></param>
             /// <param name="nodesInfo"></param>
-            private void SaveNextNodeIndexToMoveTo(NativeArray<NodePathFindInfo> nodesInfo)
+            private void SaveNextNodeIndexToMoveTo(int globalIndex, NativeArray<NodePathFindInfo> nodesInfo)
             {
-                int currNode = endNodeIndex;
+                int startNodeIndex = startIndices[globalIndex];
+                int currNode = endIndices[globalIndex];
                 int lastParent = -1;
 
                 while (currNode != startNodeIndex)
@@ -204,7 +216,7 @@ namespace AStar
                     currNode = parentNodeIndex;
                 }
 
-                nextIndices[jobIndex] = lastParent;
+                nextIndices[globalIndex] = lastParent;
             }
         }
 
@@ -213,17 +225,21 @@ namespace AStar
         #region Pathfinding Methods
 
         /// <summary>
-        /// Schedules one pathfinding job.
+        /// TODO: This is part of the stress test and an inconvenient way to use it for the final programmer.
+        /// A system that enqueues paths with their required data, which is automatically scheduled
+        /// at some point (basically what the stress tester is doing) would be more convenient for
+        /// real usage.
         /// </summary>
-        /// <param name="gm"></param>
         /// <param name="startIndices"></param>
         /// <param name="endIndices"></param>
         /// <param name="nextIndices"></param>
         /// <param name="jobIndex"></param>
         /// <param name="deps"></param>
         /// <returns></returns>
-        public static JobHandle ScheduleFindPath(GridMaster gm, NativeArray<int> startIndices, NativeArray<int> endIndices, NativeArray<int> nextIndices, int jobIndex, JobHandle deps)
+        public static JobHandle ScheduleFindPaths(NativeArray<int> startIndices, NativeArray<int> endIndices, NativeArray<int> nextIndices, int jobIndex, int iterations, JobHandle deps)
         {
+            GridMaster gm = GridMaster.Instance;
+
             return new FindPathJob
             {
                 nextIndices = nextIndices,
@@ -231,12 +247,12 @@ namespace AStar
                 endIndices = endIndices,
                 nodesNeighbors = gm.NodesNeighbors,
                 nodesTypes = gm.NodesTypes,
-                jobIndex = jobIndex,
                 numNodes = gm.Dimension,
                 gridWidth = gm.GridWidth,
                 numNeighbors = GridMaster.NodeNumNeighbors,
+                jobIndexStride = jobIndex,
             }
-            .Schedule(deps);
+            .ScheduleParallel(iterations, 1, deps);
         }
 
         #endregion

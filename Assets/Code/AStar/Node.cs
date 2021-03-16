@@ -22,9 +22,6 @@ namespace AStar
         public NodeTransform(float3 pos, float3 hitNormal)
         {
             this.pos = pos;
-            this.fwd = float3.zero;
-            this.right = float3.zero;
-            this.up = float3.zero;
 
             // the following code computes all axis from the hit normal
             bool normalAproxWorldUp = jobmaths.approxByDotProduct(hitNormal, math.up());

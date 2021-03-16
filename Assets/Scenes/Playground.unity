@@ -4770,7 +4770,7 @@ MonoBehaviour:
   m_HandleRect: {fileID: 508971459}
   m_Direction: 0
   m_MinValue: 50
-  m_MaxValue: 5000
+  m_MaxValue: 2500
   m_WholeNumbers: 1
   m_Value: 50
   m_OnValueChanged:
@@ -8895,7 +8895,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   agentPrefab: {fileID: 2697000545291045787, guid: 844d248165cece34783c4a7a8ec61a9b,
     type: 3}
-  agentsSpeed: 4
+  agentsSpeed: 6
   endPositions:
   - {fileID: 1760888066}
   - {fileID: 1642104499}

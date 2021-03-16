@@ -7,7 +7,6 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Jobs;
-using UnityEngine.Profiling;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Random = Unity.Mathematics.Random;
@@ -110,8 +109,6 @@ public class StressTester : MonoBehaviour
     private TransformAccessArray agentsTransAcc;
     private NativeArray<Vector3> endPositionsToChooseFrom;
 
-    private CustomSampler sampler = CustomSampler.Create("StressTester.CustomSample");
-
     #endregion
 
     #region MonoBehaviour Methods
@@ -155,29 +152,33 @@ public class StressTester : MonoBehaviour
         .Schedule(agentsTransAcc);
 
         NativeArray<int> nextNodesIndices = new NativeArray<int>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-        NativeArray<JobHandle> handles = new NativeArray<JobHandle>(quantity, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
 
-        for (int i = 0; i < quantity; i++)
+        const int iterationsPerJob = 8;
+        int loopTimes = quantity / iterationsPerJob;
+        int remainder = quantity % iterationsPerJob;
+        loopTimes = remainder > 0 ? loopTimes + 1 : loopTimes;
+
+        NativeArray<JobHandle> handles = new NativeArray<JobHandle>(loopTimes, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+
+        const int scheduleAfterNumOfPaths = 256;
+        int numberOfScheduledPaths = 0;
+
+        for (int i = 0; i < loopTimes; i++)
         {
-            handles[i] = Pathfinder.ScheduleFindPath(gm, startPositionsIndices, endPositionsIndices, nextNodesIndices, i, deps);
+            int iterations = (i < loopTimes - 1 || remainder == 0) ? iterationsPerJob : remainder;
+            handles[i] = Pathfinder.ScheduleFindPaths(startPositionsIndices, endPositionsIndices, nextNodesIndices, i * iterationsPerJob, iterations, deps);
 
-            // There's some interesting balancing oportunity here, the greater the number, the
-            // lesser the overhead the main thread will have, and so it will be able to finish
-            // scheduling the rest of the task faster, but the greater the number the more time
-            // before the workers actually start performing the tasks, so a lot of time is wasted
-            // while the main thread keeps "enqueuing" the tasks and the workers are in idle. If
-            // you're benchmarking this, either make sure the jobsdebugger, safety checks and leak
-            // detection is off, or ideally, make a profiled build.
-            if ((i + 1) % 256 == 0)
+            numberOfScheduledPaths += iterations;
+            if (numberOfScheduledPaths > scheduleAfterNumOfPaths)
+            {
+                // force worker threads start resolving paths while the main thread keeps scheduling
                 JobHandle.ScheduleBatchedJobs();
+                numberOfScheduledPaths %= scheduleAfterNumOfPaths;
+            }
         }
 
-        // I feel like combining all of these (tested with 2.5k+ paths) is bottlenecking, perhaps
-        // there's a way of reordering all the stuff so that it makes a minimal impact, rather than
-        // an obvious bottleneck when there's very little work on the paths but a lot of paths. I
-        // suggest profiling in build and wait all agents to reach their destinations, then see the
-        // main thread in the profiler.
         deps = JobHandle.CombineDependencies(handles);
+
         deps = new MoveAgentsJob()
         {
             nodeIndicesDestinations = nextNodesIndices,
@@ -187,8 +188,7 @@ public class StressTester : MonoBehaviour
         }
         .Schedule(agentsTransAcc, deps);
 
-        JobHandle disposeHandle = default(JobHandle);
-        disposeHandle = JobHandle.CombineDependencies(startPositionsIndices.Dispose(disposeHandle), endPositionsIndices.Dispose(disposeHandle), handles.Dispose(disposeHandle));
+        JobHandle disposeHandle = JobHandle.CombineDependencies(startPositionsIndices.Dispose(deps), endPositionsIndices.Dispose(deps), handles.Dispose(deps));
         disposeHandle = JobHandle.CombineDependencies(disposeHandle, nextNodesIndices.Dispose(deps));
 
         UpdateCamPivot(dt);
