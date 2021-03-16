@@ -38,7 +38,7 @@ public class StressTester : MonoBehaviour
         public void Execute(int index, TransformAccess transform)
         {
             Vector3 startPos = transform.position;
-            Vector3 endPos = endPositionsToChooseFrom[rand.NextInt(0, endPositionsToChooseFrom.Length - 1)];
+            Vector3 endPos = endPositionsToChooseFrom[index % endPositionsToChooseFrom.Length];
 
             startPositionsIndices[index] = PosToNodeIndex(startPos);
             endPositionsIndices[index] = PosToNodeIndex(endPos);
