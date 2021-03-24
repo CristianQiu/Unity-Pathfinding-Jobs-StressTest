@@ -125,7 +125,7 @@ public class StressTester : MonoBehaviour
         SpawnGraphy();
 
         endPositionsToChooseFrom = new NativeArray<Vector3>(endPositions.Length, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        for (int i = 0; i < endPositions.Length; i++)
+        for (int i = 0; i < endPositions.Length; ++i)
             endPositionsToChooseFrom[i] = endPositions[i].position;
     }
 
@@ -163,7 +163,7 @@ public class StressTester : MonoBehaviour
         const int scheduleAfterNumOfPaths = 256;
         int numberOfScheduledPaths = 0;
 
-        for (int i = 0; i < loopTimes; i++)
+        for (int i = 0; i < loopTimes; ++i)
         {
             int iterations = (i < loopTimes - 1 || remainder == 0) ? iterationsPerJob : remainder;
             handles[i] = Pathfinder.ScheduleFindPaths(startPositionsIndices, endPositionsIndices, nextNodesIndices, i * iterationsPerJob, iterations, deps);
@@ -220,7 +220,7 @@ public class StressTester : MonoBehaviour
     {
         agentsTransforms = new Transform[quantity];
 
-        for (int i = 0; i < quantity; i++)
+        for (int i = 0; i < quantity; ++i)
         {
             // having no parent is actually important. Sharing the parent will prevent the job
             // system to split calculations across threads properly

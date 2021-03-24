@@ -109,7 +109,7 @@ namespace AStar
                     int start = currNodeIndex * numNeighbors;
                     int end = start + numNeighbors;
 
-                    for (int i = start; i < end; i++)
+                    for (int i = start; i < end; ++i)
                     {
                         int neighborIndex = nodesNeighbors[i].neighborIndex;
 
@@ -162,7 +162,7 @@ namespace AStar
                 int lowestFCostHCost = int.MaxValue;
                 int lowestFCostVal = int.MaxValue;
 
-                for (int i = 0; i < openSet.Length; i++)
+                for (int i = 0; i < openSet.Length; ++i)
                 {
                     int currNodeIndex = openSet[i];
                     NodePathFindInfo info = nodesInfo[currNodeIndex];

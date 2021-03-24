@@ -202,7 +202,7 @@ namespace AStar
 
                 int numNeighbors = NodeNumNeighbors;
 
-                for (int i = 0; i < numNeighbors; i++)
+                for (int i = 0; i < numNeighbors; ++i)
                 {
                     int neighborIndex = neighborIndices[i];
                     int neighborsArrayIndex = index * numNeighbors + i;

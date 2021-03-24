@@ -93,7 +93,7 @@ namespace AStar
 
                 NodeTransform nt = nodesTransforms[index];
 
-                for (int i = startNeighborIndex; i < endNeighborIndex; i++)
+                for (int i = startNeighborIndex; i < endNeighborIndex; ++i)
                 {
                     int neighborIndex = nodesNeighbors[i].neighborIndex;
                     bool valid = nodesNeighbors[i].isValid;
