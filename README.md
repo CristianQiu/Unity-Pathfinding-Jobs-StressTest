@@ -6,7 +6,7 @@ Pathfinding is performed for each agent, each frame. It uses four neighbours and
 Keep jobs leak detection, safety checks and jobsdebugger deactivated to avoid overhead.
 
 # Benchmark
-The laptop I used (i7-7700hq) can handle ~500 agents around 60 fps (at the start of the game) in the provided scene in a build. Note that as agents move and get closer to the goal, the computation time decreases, so if you are CPU bound expect the framerate to increase as agents get closer to the end of the path.
+The laptop I used (i7-7700hq) can handle ~500 agents around 16ms (~60 fps) at the start of the game in the provided scene, in a build. Note that as agents move and get closer to the goal, the computation time decreases, so if you are CPU bound expect the framerate to increase as agents get closer to the end of the path.
 
 # Preview
 ![alt-text](./GithubImgs/TeaserGif.gif)
